@@ -11,11 +11,17 @@ One Worker does everything:
 It's locked to Twitter media hosts (`video.twimg.com`, `pbs.twimg.com`,
 `amp.twimg.com`) — not an open proxy. Cloudflare's **free plan** is plenty.
 
+The Worker script is `worker/worker.js`; configuration lives in the
+repo-root **`wrangler.jsonc`** (which sets `main` to this script and serves
+`public/` as static assets via the `ASSETS` binding).
+
 ---
 
 ## Deploy / update
 
-From this `worker/` folder:
+This repo is connected to Cloudflare via GitHub, so **pushing to `main`
+auto-deploys** (deploy command: `npx wrangler deploy`). To deploy manually from
+the repo root instead:
 
 ```bash
 npm install -g wrangler   # once; needs a recent version for Static Assets
@@ -23,15 +29,9 @@ wrangler login
 wrangler deploy
 ```
 
-Because the Worker is named **`xdownload`**, this **updates your existing
-Worker in place** — the URL stays:
-
-```
-https://xdownload.<your-subdomain>.workers.dev
-```
-
-`wrangler deploy` uploads `public/index.html` as a static asset and the proxy
-script together.
+The Worker is named **`xdownload`**, so deploys update it in place — the URL
+stays `https://xdownload.<your-subdomain>.workers.dev`. Both the static app and
+the proxy script ship together.
 
 ---
 
