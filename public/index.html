@@ -92,32 +92,6 @@
       overflow: hidden;
     }
 
-    /* ── Tweet card ── */
-    .tweet-avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      object-fit: cover;
-      flex-shrink: 0;
-    }
-
-    .tweet-avatar-placeholder {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: #cfd9de;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      color: #fff;
-      font-size: 1.2rem;
-    }
-
-    .tweet-author-name { font-weight: 700; font-size: 0.95rem; color: var(--x-dark); }
-    .tweet-author-handle { font-size: 0.85rem; color: var(--x-muted); }
-    .tweet-text { font-size: 0.95rem; color: var(--x-dark); white-space: pre-wrap; word-break: break-word; }
-
     /* ── Video card ── */
     .video-player-wrap {
       background: #000;
@@ -257,15 +231,18 @@
               </div>
               <button
                 class="btn btn-x flex-shrink-0"
-                @click="fetchVideos"
-                :disabled="loading || !url.trim()"
+                @click="url.trim() ? fetchVideos() : pasteAndFetch()"
+                :disabled="loading"
               >
                 <span v-if="loading" class="d-flex align-items-center gap-2">
                   <span class="spinner-border spinner-border-sm" style="width:0.9rem;height:0.9rem;"></span>
                   Fetching…
                 </span>
-                <span v-else>
+                <span v-else-if="url.trim()">
                   <i class="bi bi-search me-1"></i>Fetch
+                </span>
+                <span v-else>
+                  <i class="bi bi-clipboard me-1"></i>Paste &amp; Fetch
                 </span>
               </button>
             </div>
@@ -289,39 +266,6 @@
 
         <!-- ── Results ── -->
         <template v-if="tweet">
-
-          <!-- Tweet card -->
-          <div class="result-card mb-4">
-            <div class="card-body p-3">
-              <div class="d-flex gap-3 align-items-start">
-                <img
-                  v-if="tweet.author.avatar_url"
-                  :src="tweet.author.avatar_url"
-                  class="tweet-avatar"
-                  alt="Avatar"
-                >
-                <div v-else class="tweet-avatar-placeholder">
-                  <i class="bi bi-person-fill"></i>
-                </div>
-                <div class="flex-grow-1 overflow-hidden">
-                  <div class="d-flex flex-wrap align-items-baseline gap-1 mb-1">
-                    <span class="tweet-author-name">{{ tweet.author.name }}</span>
-                    <span class="tweet-author-handle">@{{ tweet.author.screen_name }}</span>
-                  </div>
-                  <p class="tweet-text mb-2">{{ tweet.text }}</p>
-                  <a
-                    :href="tweet.url"
-                    target="_blank"
-                    rel="noopener"
-                    class="text-decoration-none"
-                    style="font-size:0.82rem; color:var(--x-blue);"
-                  >
-                    <i class="bi bi-box-arrow-up-right me-1"></i>View on X
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
 
           <!-- No videos -->
           <div class="result-card mb-4" v-if="videos.length === 0">
@@ -381,32 +325,20 @@
                   </span>
                 </div>
 
-                <div class="d-flex gap-2">
-                  <button
-                    class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                    style="border-radius:9999px; font-size:0.82rem;"
-                    @click="copyUrl(video.url, idx)"
-                    :title="'Copy direct URL'"
-                  >
-                    <i class="bi" :class="copiedIdx === idx ? 'bi-check-lg' : 'bi-clipboard'"></i>
-                    <span>{{ copiedIdx === idx ? 'Copied' : 'Copy URL' }}</span>
-                  </button>
-
-                  <button
-                    class="btn btn-x btn-sm d-flex align-items-center gap-1"
-                    style="font-size:0.85rem;"
-                    @click="downloadVideo(video, idx)"
-                    :disabled="downloadingIdx === idx"
-                  >
-                    <span v-if="downloadingIdx === idx" class="d-flex align-items-center gap-1">
-                      <span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;"></span>
-                      Downloading…
-                    </span>
-                    <span v-else>
-                      <i class="bi bi-download me-1"></i>Download
-                    </span>
-                  </button>
-                </div>
+                <button
+                  class="btn btn-x btn-sm d-flex align-items-center gap-1"
+                  style="font-size:0.85rem;"
+                  @click="downloadVideo(video, idx)"
+                  :disabled="downloadingIdx === idx"
+                >
+                  <span v-if="downloadingIdx === idx" class="d-flex align-items-center gap-1">
+                    <span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;"></span>
+                    Downloading…
+                  </span>
+                  <span v-else>
+                    <i class="bi bi-download me-1"></i>Download
+                  </span>
+                </button>
               </div>
             </div>
           </template>
@@ -465,7 +397,6 @@ createApp({
       error: null,
       tweet: null,
       videos: [],
-      copiedIdx: null,
       downloadingIdx: null,
       toasts: [],
       _toastId: 0,
@@ -482,6 +413,31 @@ createApp({
         /https?:\/\/(?:www\.|mobile\.)?(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)\/status\/(\d+)/
       )
       return m ? { username: m[1], tweetId: m[2] } : null
+    },
+
+    // ── Paste & Fetch ─────────────────────────────────────────────────────────
+    // When the field is empty, the primary button reads the clipboard, drops the
+    // URL into the input, and fetches — one tap from a copied link to results.
+    async pasteAndFetch() {
+      let text
+      try {
+        text = await navigator.clipboard.readText()
+      } catch {
+        // Clipboard blocked (permission denied / insecure context) — let the
+        // user paste manually.
+        this.toast('Couldn’t read the clipboard — paste the URL manually', 'warning', 'bi-clipboard')
+        this.$refs.urlInput?.focus()
+        return
+      }
+
+      if (!text || !text.trim()) {
+        this.toast('Clipboard is empty — copy a post URL first', 'warning', 'bi-clipboard')
+        this.$refs.urlInput?.focus()
+        return
+      }
+
+      this.url = text.trim()
+      await this.fetchVideos()
     },
 
     // ── Fetch ────────────────────────────────────────────────────────────────
@@ -661,18 +617,6 @@ createApp({
       const id = video.id || this.tweet?.id || 'video'
       const suffix = this.videos.length > 1 ? `_${idx + 1}` : ''
       return `${handle}_${id}${suffix}.mp4`
-    },
-
-    // ── Copy URL ─────────────────────────────────────────────────────────────
-    async copyUrl(url, idx) {
-      try {
-        await navigator.clipboard.writeText(url)
-        this.copiedIdx = idx
-        this.toast('URL copied to clipboard', 'success', 'bi-check-circle-fill')
-        setTimeout(() => { if (this.copiedIdx === idx) this.copiedIdx = null }, 2000)
-      } catch {
-        this.toast('Could not access clipboard', 'warning', 'bi-exclamation-circle')
-      }
     },
 
     // ── Toast helper ─────────────────────────────────────────────────────────
