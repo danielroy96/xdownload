@@ -448,14 +448,13 @@ const { createApp } = Vue
 // CONFIG — your own video proxy (recommended)
 //
 // Twitter's CDN (video.twimg.com) sends no CORS headers, so the browser can't
-// read the video bytes to save them. Deploy the tiny Cloudflare Worker in
-// /worker (free, ~30 lines, see /worker/README.md) and paste its URL here to
-// get reliable, consistent one-click downloads AND in-page playback.
+// read the video bytes to save them. The Cloudflare Worker in /worker serves
+// this app AND exposes a /proxy endpoint that re-serves twimg video with CORS,
+// giving reliable one-click downloads and in-page playback.
 //
-//   const PROXY_BASE = 'https://xdownload-proxy.yourname.workers.dev'
-//
+// Set this to the origin where the Worker is deployed (no trailing slash).
 // Leave it as '' to fall back to public CORS proxies + manual save.
-const PROXY_BASE = ''
+const PROXY_BASE = 'https://xdownload.daniel-roy56.workers.dev'
 // ─────────────────────────────────────────────────────────────────────────────
 
 createApp({
@@ -545,7 +544,7 @@ createApp({
     // Build the proxied URL for a twimg resource via the configured Worker.
     // `dl` (optional) sets a download filename via Content-Disposition.
     proxied(targetUrl, dl) {
-      let u = `${this.proxyBase}/?url=${encodeURIComponent(targetUrl)}`
+
       if (dl) u += `&dl=${encodeURIComponent(dl)}`
       return u
     },
