@@ -544,7 +544,7 @@ createApp({
     // Build the proxied URL for a twimg resource via the configured Worker.
     // `dl` (optional) sets a download filename via Content-Disposition.
     proxied(targetUrl, dl) {
-
+      let u = `${this.proxyBase}/proxy?url=${encodeURIComponent(targetUrl)}`
       if (dl) u += `&dl=${encodeURIComponent(dl)}`
       return u
     },

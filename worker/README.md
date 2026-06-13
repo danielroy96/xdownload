@@ -1,69 +1,61 @@
-# xDownload video proxy (Cloudflare Worker)
+# xDownload — Cloudflare Worker (app + video proxy)
 
-A ~30-line Cloudflare Worker that lets the page read Twitter video bytes so it
-can play them reliably and save them in one click.
+One Worker does everything:
 
-**Why it's needed:** `video.twimg.com` sends no CORS headers and blocks
-hot-linking, so the browser can't read the video to save it. This Worker fetches
-the file server-side (no CORS there), spoofs a `twitter.com` Referer, and
-re-serves it with `Access-Control-Allow-Origin: *`. It's locked to Twitter media
-hosts only, so it can't be abused as an open proxy.
+1. **Hosts the app** — serves `public/index.html` as a static asset.
+2. **Proxies video** — `/proxy?url=<twimg url>` fetches the video server-side,
+   spoofs a `twitter.com` Referer to beat twimg's hot-link `403`, and re-serves
+   it with `Access-Control-Allow-Origin`. Same origin as the app, so downloads
+   and playback work with no CORS issues.
 
-Cloudflare's **free plan** covers this comfortably (100k requests/day).
+It's locked to Twitter media hosts (`video.twimg.com`, `pbs.twimg.com`,
+`amp.twimg.com`) — not an open proxy. Cloudflare's **free plan** is plenty.
 
 ---
 
-## Deploy in 3 steps
+## Deploy / update
 
-### Option A — Wrangler CLI (recommended)
+From this `worker/` folder:
 
 ```bash
-# 1. Install the CLI (once)
-npm install -g wrangler
-
-# 2. Log in and deploy (from this /worker folder)
+npm install -g wrangler   # once; needs a recent version for Static Assets
 wrangler login
 wrangler deploy
 ```
 
-`wrangler deploy` prints your Worker URL, e.g.:
+Because the Worker is named **`xdownload`**, this **updates your existing
+Worker in place** — the URL stays:
 
 ```
-https://xdownload-proxy.your-subdomain.workers.dev
+https://xdownload.<your-subdomain>.workers.dev
 ```
 
-### Option B — Cloudflare dashboard (no CLI)
-
-1. Go to **dash.cloudflare.com → Workers & Pages → Create → Create Worker**.
-2. Name it (e.g. `xdownload-proxy`) and **Deploy**.
-3. Click **Edit code**, delete the template, paste the contents of
-   [`proxy.js`](./proxy.js), then **Deploy** again.
-4. Copy the `*.workers.dev` URL shown at the top.
+`wrangler deploy` uploads `public/index.html` as a static asset and the proxy
+script together.
 
 ---
 
-## Connect it to the app
+## Connect the app
 
-Open `public/index.html`, find the `PROXY_BASE` constant near the top of the
-`<script>` block, and paste your Worker URL:
+`PROXY_BASE` in `public/index.html` is already set to your Worker origin:
 
 ```js
-const PROXY_BASE = 'https://xdownload-proxy.your-subdomain.workers.dev'
+const PROXY_BASE = 'https://xdownload.daniel-roy56.workers.dev'
 ```
 
-Reload the page. Videos now stream through your Worker and the **Download**
-button saves files directly to your downloads folder. No other changes needed —
-if `PROXY_BASE` is left blank the app still works via public proxies + manual
-save.
+If your Worker URL ever changes, update that line (no trailing slash).
 
 ---
 
-## Endpoints
+## Verify
 
-| Request | Behaviour |
+After deploying, these should hold:
+
+| Request | Expected |
 |---|---|
-| `GET /?url=<encoded twimg url>` | streams the video (CORS-enabled, supports Range/seeking) |
-| `GET /?url=<encoded twimg url>&dl=<filename>` | same, but forces a download with the given filename |
+| `GET /` | the app loads |
+| `GET /proxy?url=https://example.com/x` | `403 {"error":"host not allowed"}` |
+| `GET /proxy?url=<encoded twimg .mp4>` | the video streams (with CORS headers) |
 
-Only `video.twimg.com`, `pbs.twimg.com`, and `amp.twimg.com` targets are
-permitted; anything else returns `403`.
+Then open the app, fetch a post, and click **Download** — the file saves
+directly instead of opening in a new tab.
