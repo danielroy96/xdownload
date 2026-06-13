@@ -1,0 +1,7 @@
+name = "xdownload-proxy"
+main = "proxy.js"
+compatibility_date = "2024-11-01"
+
+# Free plan is fine. After `wrangler deploy`, the CLI prints your Worker URL,
+# e.g. https://xdownload-proxy.<your-subdomain>.workers.dev — paste that into
+# PROXY_BASE in public/index.html.

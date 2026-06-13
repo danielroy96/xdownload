@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>xDownload — X / Twitter Video Downloader</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --x-blue: #1d9bf0;
+      --x-blue-hover: #1a8cd8;
+      --x-dark: #0f1419;
+      --x-border: #e1e8ed;
+      --x-muted: #536471;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: #f7f9f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Navbar ── */
+    .x-navbar {
+      background: #000;
+      border-bottom: 1px solid #2f3336;
+      padding: 0.75rem 0;
+    }
+
+    .x-logo path { fill: #fff; }
+
+    /* ── Page layout ── */
+    .page-header {
+      background: #000;
+      color: #fff;
+      padding: 3rem 0 4.5rem;
+    }
+
+    .page-header h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+    .page-header .lead { color: #71767b; font-size: 1rem; }
+
+    .search-card {
+      margin-top: -2.5rem;
+      border-radius: 16px;
+      border: none;
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+    }
+
+    /* ── Input group ── */
+    .url-input-group .form-control {
+      border-right: none;
+      font-size: 0.95rem;
+      padding: 0.65rem 0.9rem;
+      border-color: var(--x-border);
+    }
+
+    .url-input-group .form-control:focus { box-shadow: none; border-color: var(--x-blue); }
+
+    .url-input-group .input-group-text {
+      background: #fff;
+      border-left: none;
+      border-color: var(--x-border);
+      padding-left: 0;
+      padding-right: 0.5rem;
+      color: var(--x-muted);
+    }
+
+    /* ── X-style button ── */
+    .btn-x {
+      background: var(--x-blue);
+      color: #fff;
+      border: none;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 0.55rem 1.4rem;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-x:hover:not(:disabled) { background: var(--x-blue-hover); color: #fff; }
+    .btn-x:disabled { opacity: 0.6; color: #fff; }
+
+    /* ── Cards ── */
+    .result-card {
+      border-radius: 14px;
+      border: 1px solid var(--x-border);
+      background: #fff;
+      overflow: hidden;
+    }
+
+    /* ── Tweet card ── */
+    .tweet-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .tweet-avatar-placeholder {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #cfd9de;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #fff;
+      font-size: 1.2rem;
+    }
+
+    .tweet-author-name { font-weight: 700; font-size: 0.95rem; color: var(--x-dark); }
+    .tweet-author-handle { font-size: 0.85rem; color: var(--x-muted); }
+    .tweet-text { font-size: 0.95rem; color: var(--x-dark); white-space: pre-wrap; word-break: break-word; }
+
+    /* ── Video card ── */
+    .video-player-wrap {
+      background: #000;
+      position: relative;
+      line-height: 0;
+    }
+
+    .video-player-wrap video {
+      width: 100%;
+      max-height: 460px;
+      display: block;
+    }
+
+    .video-meta { font-size: 0.82rem; color: var(--x-muted); }
+    .badge-video { background: #1d9bf0; }
+    .badge-gif   { background: #17bf63; }
+
+    /* ── Empty state ── */
+    .empty-state { color: #cfd9de; }
+    .empty-state i { font-size: 4rem; }
+    .empty-state p { color: var(--x-muted); font-size: 0.95rem; }
+
+    /* ── Section heading ── */
+    .section-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--x-muted);
+    }
+
+    /* ── Toast ── */
+    .toast-stack {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      z-index: 1200;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+
+    .x-toast {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #292929;
+      color: #fff;
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+      pointer-events: auto;
+      animation: slideUp 0.2s ease;
+      max-width: 340px;
+    }
+
+    .x-toast.toast-success i { color: #00ba7c; }
+    .x-toast.toast-info    i { color: var(--x-blue); }
+    .x-toast.toast-warning i { color: #ffad1f; }
+    .x-toast.toast-error   i { color: #f4212e; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Divider ── */
+    .video-divider { border-color: var(--x-border); }
+
+    /* ── Utility ── */
+    .gap-2 { gap: 0.5rem; }
+
+    @media (max-width: 576px) {
+      .page-header { padding: 2rem 0 3.5rem; }
+      .page-header h1 { font-size: 1.5rem; }
+      .search-card { margin-top: -2rem; }
+      .btn-x { padding: 0.55rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Navbar ── -->
+  <nav class="x-navbar">
+    <div class="container d-flex align-items-center gap-2">
+      <svg class="x-logo" viewBox="0 0 24 24" width="22" height="22">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.858L1.258 2.25H8.08l4.259 5.629L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/>
+      </svg>
+      <span class="text-white fw-bold" style="font-size:1rem;">Video Downloader</span>
+    </div>
+  </nav>
+
+  <!-- ── Page header ── -->
+  <div class="page-header text-center">
+    <div class="container">
+      <h1>Download X Videos</h1>
+      <p class="lead mt-2 mb-0">Paste any post URL to extract and save its videos</p>
+    </div>
+  </div>
+
+  <!-- ── Main ── -->
+  <div class="container pb-5">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-7">
+
+        <!-- Search card -->
+        <div class="card search-card mb-4">
+          <div class="card-body p-4">
+            <label class="form-label section-label mb-3">Post URL</label>
+
+            <div class="d-flex gap-2 align-items-stretch url-input-group">
+              <div class="input-group flex-grow-1">
+                <input
+                  type="url"
+                  class="form-control"
+                  placeholder="https://x.com/username/status/…"
+                  v-model="url"
+                  @keyup.enter="fetchVideos"
+                  :disabled="loading"
+                  ref="urlInput"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <span class="input-group-text" v-if="url">
+                  <button
+                    type="button"
+                    class="btn btn-link p-0 text-muted"
+                    style="line-height:1;"
+                    @click="url = ''; tweet = null; videos = []; error = null"
+                    title="Clear"
+                  ><i class="bi bi-x-lg" style="font-size:.8rem;"></i></button>
+                </span>
+              </div>
+              <button
+                class="btn btn-x flex-shrink-0"
+                @click="fetchVideos"
+                :disabled="loading || !url.trim()"
+              >
+                <span v-if="loading" class="d-flex align-items-center gap-2">
+                  <span class="spinner-border spinner-border-sm" style="width:0.9rem;height:0.9rem;"></span>
+                  Fetching…
+                </span>
+                <span v-else>
+                  <i class="bi bi-search me-1"></i>Fetch
+                </span>
+              </button>
+            </div>
+
+            <p class="text-muted mt-2 mb-0" style="font-size:0.8rem;">
+              <i class="bi bi-info-circle me-1"></i>Supports x.com and twitter.com post URLs
+            </p>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div class="result-card mb-4 border-danger" v-if="error">
+          <div class="card-body p-3 d-flex gap-3 align-items-start">
+            <i class="bi bi-exclamation-circle-fill text-danger fs-5 flex-shrink-0 mt-1"></i>
+            <div>
+              <p class="fw-semibold mb-1 text-danger">Could not load post</p>
+              <p class="mb-0 text-muted" style="font-size:0.9rem;">{{ error }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Results ── -->
+        <template v-if="tweet">
+
+          <!-- Tweet card -->
+          <div class="result-card mb-4">
+            <div class="card-body p-3">
+              <div class="d-flex gap-3 align-items-start">
+                <img
+                  v-if="tweet.author.avatar_url"
+                  :src="tweet.author.avatar_url"
+                  class="tweet-avatar"
+                  alt="Avatar"
+                >
+                <div v-else class="tweet-avatar-placeholder">
+                  <i class="bi bi-person-fill"></i>
+                </div>
+                <div class="flex-grow-1 overflow-hidden">
+                  <div class="d-flex flex-wrap align-items-baseline gap-1 mb-1">
+                    <span class="tweet-author-name">{{ tweet.author.name }}</span>
+                    <span class="tweet-author-handle">@{{ tweet.author.screen_name }}</span>
+                  </div>
+                  <p class="tweet-text mb-2">{{ tweet.text }}</p>
+                  <a
+                    :href="tweet.url"
+                    target="_blank"
+                    rel="noopener"
+                    class="text-decoration-none"
+                    style="font-size:0.82rem; color:var(--x-blue);"
+                  >
+                    <i class="bi bi-box-arrow-up-right me-1"></i>View on X
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- No videos -->
+          <div class="result-card mb-4" v-if="videos.length === 0">
+            <div class="card-body p-4 text-center">
+              <i class="bi bi-camera-video-off fs-2 d-block mb-2" style="color:#cfd9de;"></i>
+              <p class="mb-0 text-muted" style="font-size:0.9rem;">
+                No videos found in this post. The post may only contain photos or text.
+              </p>
+            </div>
+          </div>
+
+          <!-- Videos -->
+          <template v-if="videos.length > 0">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <span class="section-label">
+                {{ videos.length }} video{{ videos.length !== 1 ? 's' : '' }} found
+              </span>
+            </div>
+
+            <div
+              v-for="(video, idx) in videos"
+              :key="idx"
+              class="result-card mb-4"
+            >
+              <!-- Player -->
+              <div class="video-player-wrap">
+                <video
+                  v-if="video.type === 'gif'"
+                  :src="playSrc(video)"
+                  autoplay
+                  loop
+                  muted
+                  playsinline
+                ></video>
+                <video
+                  v-else
+                  :src="playSrc(video)"
+                  :poster="video.thumbnail_url"
+                  controls
+                  preload="metadata"
+                  playsinline
+                ></video>
+              </div>
+
+              <!-- Footer -->
+              <div class="p-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 video-meta">
+                  <span
+                    class="badge rounded-pill text-white"
+                    :class="video.type === 'gif' ? 'badge-gif' : 'badge-video'"
+                    style="font-size:0.72rem;"
+                  >
+                    {{ video.type === 'gif' ? 'GIF' : 'Video' }}
+                  </span>
+                  <span v-if="video.width && video.height">
+                    <i class="bi bi-aspect-ratio me-1"></i>{{ video.width }}×{{ video.height }}
+                  </span>
+                </div>
+
+                <div class="d-flex gap-2">
+                  <button
+                    class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                    style="border-radius:9999px; font-size:0.82rem;"
+                    @click="copyUrl(video.url, idx)"
+                    :title="'Copy direct URL'"
+                  >
+                    <i class="bi" :class="copiedIdx === idx ? 'bi-check-lg' : 'bi-clipboard'"></i>
+                    <span>{{ copiedIdx === idx ? 'Copied' : 'Copy URL' }}</span>
+                  </button>
+
+                  <button
+                    class="btn btn-x btn-sm d-flex align-items-center gap-1"
+                    style="font-size:0.85rem;"
+                    @click="downloadVideo(video, idx)"
+                    :disabled="downloadingIdx === idx"
+                  >
+                    <span v-if="downloadingIdx === idx" class="d-flex align-items-center gap-1">
+                      <span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;"></span>
+                      Downloading…
+                    </span>
+                    <span v-else>
+                      <i class="bi bi-download me-1"></i>Download
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+        </template>
+
+        <!-- Empty state -->
+        <div class="text-center py-5 empty-state" v-if="!tweet && !loading && !error">
+          <i class="bi bi-camera-video d-block mb-3"></i>
+          <p class="mb-0">Paste an X post URL above to get started</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toasts ── -->
+  <div class="toast-stack">
+    <transition-group name="toast">
+      <div
+        v-for="t in toasts"
+        :key="t.id"
+        class="x-toast"
+        :class="'toast-' + t.type"
+      >
+        <i class="bi flex-shrink-0" :class="t.icon"></i>
+        <span>{{ t.message }}</span>
+      </div>
+    </transition-group>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script>
+const { createApp } = Vue
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG — your own video proxy (recommended)
+//
+// Twitter's CDN (video.twimg.com) sends no CORS headers, so the browser can't
+// read the video bytes to save them. Deploy the tiny Cloudflare Worker in
+// /worker (free, ~30 lines, see /worker/README.md) and paste its URL here to
+// get reliable, consistent one-click downloads AND in-page playback.
+//
+//   const PROXY_BASE = 'https://xdownload-proxy.yourname.workers.dev'
+//
+// Leave it as '' to fall back to public CORS proxies + manual save.
+const PROXY_BASE = ''
+// ─────────────────────────────────────────────────────────────────────────────
+
+createApp({
+  data() {
+    return {
+      url: '',
+      loading: false,
+      error: null,
+      tweet: null,
+      videos: [],
+      copiedIdx: null,
+      downloadingIdx: null,
+      toasts: [],
+      _toastId: 0,
+      proxyBase: PROXY_BASE.replace(/\/+$/, '')   // trailing slash trimmed
+    }
+  },
+
+  methods: {
+    // ── URL parsing ──────────────────────────────────────────────────────────
+    parseTweetUrl(raw) {
+      const url = raw.trim().replace(/^(?!https?:\/\/)/, 'https://')
+      // Handles: x.com, twitter.com, mobile.twitter.com, www. prefix, /video/N suffix
+      const m = url.match(
+        /https?:\/\/(?:www\.|mobile\.)?(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)\/status\/(\d+)/
+      )
+      return m ? { username: m[1], tweetId: m[2] } : null
+    },
+
+    // ── Fetch ────────────────────────────────────────────────────────────────
+    async fetchVideos() {
+      const trimmed = this.url.trim()
+      if (!trimmed) return
+
+      this.loading = true
+      this.error = null
+      this.tweet = null
+      this.videos = []
+
+      const parsed = this.parseTweetUrl(trimmed)
+      if (!parsed) {
+        this.error = 'That doesn\'t look like a valid X post URL. Expected format: https://x.com/username/status/123…'
+        this.loading = false
+        return
+      }
+
+      try {
+        const res = await fetch(
+          `https://api.fxtwitter.com/${parsed.username}/status/${parsed.tweetId}`
+        )
+
+        const data = await res.json()
+
+        if (!res.ok || data.code !== 200) {
+          const msg = {
+            404: 'Post not found. It may have been deleted or the account may be private or suspended.',
+            401: 'This post is from a protected account.',
+            403: 'Access to this post is restricted.',
+          }[data.code] || `Could not load post (error ${data.code ?? res.status}).`
+          throw new Error(msg)
+        }
+
+        this.tweet = data.tweet
+        this.videos = data.tweet?.media?.videos ?? []
+
+        if (this.videos.length === 0) {
+          this.toast('No videos in this post', 'warning', 'bi-camera-video-off')
+        } else {
+          this.toast(
+            `${this.videos.length} video${this.videos.length !== 1 ? 's' : ''} found`,
+            'success',
+            'bi-check-circle-fill'
+          )
+        }
+
+      } catch (err) {
+        if (err instanceof TypeError) {
+          this.error = 'Network error — please check your connection and try again.'
+        } else {
+          this.error = err.message || 'Something went wrong. Please try again.'
+        }
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // Build the proxied URL for a twimg resource via the configured Worker.
+    // `dl` (optional) sets a download filename via Content-Disposition.
+    proxied(targetUrl, dl) {
+      let u = `${this.proxyBase}/?url=${encodeURIComponent(targetUrl)}`
+      if (dl) u += `&dl=${encodeURIComponent(dl)}`
+      return u
+    },
+
+    // URL used for in-page playback. Routes through the Worker when configured
+    // so playback is reliable (twimg can 403 hot-linked <video> by referer);
+    // otherwise uses the direct URL, which works in most real browsers.
+    playSrc(video) {
+      return this.proxyBase ? this.proxied(video.url) : video.url
+    },
+
+    // ── Download ─────────────────────────────────────────────────────────────
+    //
+    // Twitter's CDN (video.twimg.com) sends NO CORS headers, so the page can't
+    // read the raw bytes directly (the response is "opaque"). To produce the
+    // download UX users expect — one click, file lands in Downloads — we fetch
+    // the video through a proxy that re-serves it with `Access-Control-Allow-
+    // Origin`, read the result into a Blob, and trigger a same-origin save.
+    //
+    // When PROXY_BASE is set we use your own Cloudflare Worker first — reliable,
+    // unmetered by third parties, and never blocked. We then fall back through a
+    // direct fetch and a few public proxies (best-effort), and finally to a
+    // referrer-free <a download> so the user can always save manually. Each
+    // attempt has a timeout so a dead proxy can't stall the chain.
+    async downloadVideo(video, idx) {
+      this.downloadingIdx = idx
+
+      // Prefer the highest-bitrate direct MP4 (never the .m3u8 HLS playlist).
+      const src = this.bestMp4Url(video)
+      const filename = this.buildFilename(video, idx)
+
+      // Ordered list of fetch strategies. Each returns a full URL to fetch.
+      const strategies = [
+        ...(this.proxyBase ? [this.proxied(src, filename)] : []),             // your Worker (preferred)
+        src,                                                                  // direct (same-origin / CORS-enabled / local file)
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(src)}`,
+        `https://thingproxy.freeboard.io/fetch/${src}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(src)}`,
+        `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(src)}`,
+      ]
+
+      for (const url of strategies) {
+        const blob = await this.tryFetchVideo(url)
+        if (blob) {
+          this.saveBlob(blob, filename)
+          this.toast('Video saved to your downloads', 'success', 'bi-check-circle-fill')
+          this.downloadingIdx = null
+          return
+        }
+      }
+
+      // Every fetch path failed — hand off to the browser. rel="noreferrer"
+      // avoids twimg's hot-link 403, so the video opens and can be saved via
+      // the native player's right-click → "Save Video As".
+      const a = document.createElement('a')
+      a.href = src
+      a.download = filename
+      a.target = '_blank'
+      a.rel = 'noreferrer'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      this.toast(
+        'Opening the video in a new tab — right-click it and choose “Save Video As”',
+        'info',
+        'bi-download'
+      )
+      this.downloadingIdx = null
+    },
+
+    // Fetch a candidate URL and return a Blob only if it's a real video file.
+    // Returns null on any failure so the caller can fall through to the next.
+    async tryFetchVideo(url, timeoutMs = 25000) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const res = await fetch(url, { signal: controller.signal })
+        if (!res.ok) return null
+        const blob = await res.blob()
+        // Reject HTML/JSON error pages some proxies return with a 200 status.
+        if (blob.size < 100_000) return null
+        if (blob.type && !/(video|octet-stream|mp4|mpeg)/i.test(blob.type)) return null
+        return blob
+      } catch {
+        return null
+      } finally {
+        clearTimeout(timer)
+      }
+    },
+
+    // Trigger a same-origin Blob download.
+    saveBlob(blob, filename) {
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    },
+
+    // Pick the best progressive MP4 url, falling back to video.url.
+    bestMp4Url(video) {
+      const variants = (video.variants || video.formats || [])
+        .filter(v => v.url && /\.mp4(\?|$)/.test(v.url))
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))
+      return variants[0]?.url || video.url
+    },
+
+    // Build a descriptive, filesystem-safe filename.
+    buildFilename(video, idx) {
+      const handle = this.tweet?.author?.screen_name || 'x'
+      const id = video.id || this.tweet?.id || 'video'
+      const suffix = this.videos.length > 1 ? `_${idx + 1}` : ''
+      return `${handle}_${id}${suffix}.mp4`
+    },
+
+    // ── Copy URL ─────────────────────────────────────────────────────────────
+    async copyUrl(url, idx) {
+      try {
+        await navigator.clipboard.writeText(url)
+        this.copiedIdx = idx
+        this.toast('URL copied to clipboard', 'success', 'bi-check-circle-fill')
+        setTimeout(() => { if (this.copiedIdx === idx) this.copiedIdx = null }, 2000)
+      } catch {
+        this.toast('Could not access clipboard', 'warning', 'bi-exclamation-circle')
+      }
+    },
+
+    // ── Toast helper ─────────────────────────────────────────────────────────
+    toast(message, type = 'info', icon = 'bi-info-circle-fill') {
+      const id = ++this._toastId
+      this.toasts.push({ id, message, type, icon })
+      setTimeout(() => {
+        const i = this.toasts.findIndex(t => t.id === id)
+        if (i !== -1) this.toasts.splice(i, 1)
+      }, 4000)
+    }
+  }
+}).mount('#app')
+</script>
+</body>
+</html>
