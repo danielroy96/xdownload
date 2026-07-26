@@ -12,5 +12,11 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "routes": [
+    {
+      "pattern": "xdownload.info",
+      "custom_domain": true
+    }
   ]
 }
