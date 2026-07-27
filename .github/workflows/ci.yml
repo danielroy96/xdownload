@@ -1,0 +1,37 @@
+name: CI
+
+# Runs the Jest suite on every push and pull request. Branch protection on
+# `main` uses the "test" job below as a required status check, so a PR can't be
+# merged until these tests pass. See CLAUDE.md for what's under test (the
+# Worker's /proxy contract + the single-file Vue app's logic).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs for the same ref so a fresh push doesn't queue behind
+# a stale one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test

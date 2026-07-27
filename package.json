@@ -1,0 +1,17 @@
+{
+  "name": "xdownload",
+  "version": "1.0.0",
+  "description": "X / Twitter video downloader — Cloudflare Worker (app host + video proxy). This package.json exists only for the Jest test harness and CI; the app itself stays single-file and dependency-free (CDN only).",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

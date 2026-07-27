@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>xDownload — X / Twitter Video Downloader</title>
 
+  <!-- ── SEO / discovery ── -->
+  <meta name="description" content="Free X / Twitter video downloader. Paste a post URL to save its videos and GIFs in one click — no login, no watermark.">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="light">
+  <link rel="canonical" href="https://xdownload.info/">
+
+  <!-- ── Social cards (Open Graph + Twitter) ── -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="xDownload">
+  <meta property="og:title" content="xDownload — X / Twitter Video Downloader">
+  <meta property="og:description" content="Paste a post URL to save its videos and GIFs in one click — no login, no watermark.">
+  <meta property="og:url" content="https://xdownload.info/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="xDownload — X / Twitter Video Downloader">
+  <meta name="twitter:description" content="Paste a post URL to save its videos and GIFs in one click — no login, no watermark.">
+
+  <!-- ── Favicon: the X mark on a black rounded square, inline so there's no
+       extra request and no asset file to ship. ── -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23000'/%3E%3Cpath fill='%23fff' d='M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.858L1.258 2.25H8.08l4.259 5.629L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z'/%3E%3C/svg%3E">
+
   <!-- ─────────────────────────────────────────────────────────────────────────
        Google AdSense loader. Ads only serve once your site is approved in the
        AdSense dashboard AND you've filled in a real ad-unit slot ID
@@ -174,9 +194,6 @@
     /* ── Divider ── */
     .video-divider { border-color: var(--x-border); }
 
-    /* ── Utility ── */
-    .gap-2 { gap: 0.5rem; }
-
     /* ── Ads ── */
     .ad-slot {
       display: block;
@@ -237,7 +254,11 @@
     }
 
     @media (max-width: 576px) {
-      /* Keep it tiny and unobtrusive on phones — easy to ignore or dismiss. */
+      .page-header { padding: 2rem 0 3.5rem; }
+      .page-header h1 { font-size: 1.5rem; }
+      .search-card { margin-top: -2rem; }
+      .btn-x { padding: 0.55rem 1rem; }
+      /* Keep the cookie notice tiny and unobtrusive on phones. */
       .cookie-notice {
         left: 0.5rem;
         right: 0.5rem;
@@ -247,13 +268,6 @@
         padding: 0.5rem 0.6rem;
       }
     }
-
-    @media (max-width: 576px) {
-      .page-header { padding: 2rem 0 3.5rem; }
-      .page-header h1 { font-size: 1.5rem; }
-      .search-card { margin-top: -2rem; }
-      .btn-x { padding: 0.55rem 1rem; }
-    }
   </style>
 </head>
 <body>
@@ -262,7 +276,7 @@
   <!-- ── Navbar ── -->
   <nav class="x-navbar">
     <div class="container d-flex align-items-center gap-2">
-      <svg class="x-logo" viewBox="0 0 24 24" width="22" height="22">
+      <svg class="x-logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.858L1.258 2.25H8.08l4.259 5.629L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/>
       </svg>
       <span class="text-white fw-bold" style="font-size:1rem;">Video Downloader</span>
@@ -299,14 +313,16 @@
                   ref="urlInput"
                   autocomplete="off"
                   spellcheck="false"
+                  aria-label="X post URL"
                 >
                 <span class="input-group-text" v-if="url">
                   <button
                     type="button"
                     class="btn btn-link p-0 text-muted"
                     style="line-height:1;"
-                    @click="url = ''; tweet = null; videos = []; error = null"
+                    @click="clearInput"
                     title="Clear"
+                    aria-label="Clear the URL"
                   ><i class="bi bi-x-lg" style="font-size:.8rem;"></i></button>
                 </span>
               </div>
@@ -351,7 +367,7 @@
         </div>
 
         <!-- Error -->
-        <div class="result-card mb-4 border-danger" v-if="error">
+        <div class="result-card mb-4 border-danger" v-if="error" role="alert">
           <div class="card-body p-3 d-flex gap-3 align-items-start">
             <i class="bi bi-exclamation-circle-fill text-danger fs-5 flex-shrink-0 mt-1"></i>
             <div>
@@ -470,7 +486,7 @@
   </div>
 
   <!-- ── Toasts ── -->
-  <div class="toast-stack">
+  <div class="toast-stack" aria-live="polite" aria-atomic="true">
     <transition-group name="toast">
       <div
         v-for="t in toasts"
@@ -570,6 +586,15 @@ createApp({
       return m ? { username: m[1], tweetId: m[2] } : null
     },
 
+    // ── Clear ──────────────────────────────────────────────────────────────
+    // Reset the input and any results/errors back to the empty state.
+    clearInput() {
+      this.url = ''
+      this.tweet = null
+      this.videos = []
+      this.error = null
+    },
+
     // ── Paste & Fetch ─────────────────────────────────────────────────────────
     // When the field is empty, the primary button reads the clipboard, drops the
     // URL into the input, and fetches — one tap from a copied link to results.
@@ -612,12 +637,25 @@ createApp({
         return
       }
 
+      // Time-box the lookup so a hung request can't leave the button spinning
+      // forever (mirrors the per-attempt timeout in tryFetchVideo).
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 15000)
       try {
         const res = await fetch(
-          `https://api.fxtwitter.com/${parsed.username}/status/${parsed.tweetId}`
+          `https://api.fxtwitter.com/${parsed.username}/status/${parsed.tweetId}`,
+          { signal: controller.signal }
         )
 
-        const data = await res.json()
+        // fxtwitter answers with JSON; a rate-limit / outage page can be HTML,
+        // which would make res.json() throw an unfriendly SyntaxError. Treat any
+        // non-JSON body as a generic service error instead.
+        let data
+        try {
+          data = await res.json()
+        } catch {
+          throw new Error('The lookup service returned an unexpected response. Please try again shortly.')
+        }
 
         if (!res.ok || data.code !== 200) {
           const msg = {
@@ -642,12 +680,15 @@ createApp({
         }
 
       } catch (err) {
-        if (err instanceof TypeError) {
+        if (err?.name === 'AbortError') {
+          this.error = 'The request timed out. Please try again.'
+        } else if (err instanceof TypeError) {
           this.error = 'Network error — please check your connection and try again.'
         } else {
           this.error = err.message || 'Something went wrong. Please try again.'
         }
       } finally {
+        clearTimeout(timer)
         this.loading = false
       }
     },
