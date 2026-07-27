@@ -6,10 +6,20 @@
   <title>xDownload — X / Twitter Video Downloader</title>
 
   <!-- ── SEO / discovery ── -->
-  <meta name="description" content="Free X / Twitter video downloader. Paste a post URL to save its videos and GIFs in one click — no login, no watermark.">
+  <meta name="description" content="Free X / Twitter video downloader. Paste a post URL to download videos and GIFs from X (Twitter) in one click — HD MP4, no login, no watermark, no app.">
+  <!-- Explicit crawl directive. max-image-preview:large lets Google show a full-size
+       thumbnail in results; there's nothing here we want to hide from indexing. -->
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="light">
   <link rel="canonical" href="https://xdownload.info/">
+
+  <!-- Resource hints: warm up the TLS/DNS to the CDNs and the fxtwitter API we hit
+       on first fetch. Faster paint / lower LCP is a real ranking signal. -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://api.fxtwitter.com">
+  <link rel="dns-prefetch" href="https://api.fxtwitter.com">
 
   <!-- ── Social cards (Open Graph + Twitter) ── -->
   <meta property="og:type" content="website">
@@ -20,6 +30,114 @@
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="xDownload — X / Twitter Video Downloader">
   <meta name="twitter:description" content="Paste a post URL to save its videos and GIFs in one click — no login, no watermark.">
+
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       Structured data (schema.org / JSON-LD). This is what earns rich results in
+       Google: a WebApplication card, a HowTo, and an FAQ block. The FAQ questions
+       here MUST mirror the visible FAQ in the page body — Google penalises
+       structured data that doesn't match on-page content. Keep them in sync.
+  ────────────────────────────────────────────────────────────────────────── -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebApplication",
+        "@id": "https://xdownload.info/#app",
+        "name": "xDownload",
+        "url": "https://xdownload.info/",
+        "description": "Free online X (Twitter) video downloader. Paste a post URL to download videos and GIFs in HD MP4 — no login, no watermark, no app install.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Any (web browser)",
+        "browserRequirements": "Requires JavaScript",
+        "inLanguage": "en",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Download X / Twitter videos in HD MP4",
+          "Download Twitter GIFs",
+          "One-click save, no login required",
+          "No watermark on downloads",
+          "Works on desktop and mobile browsers"
+        ]
+      },
+      {
+        "@type": "HowTo",
+        "name": "How to download a video from X (Twitter)",
+        "description": "Save any video or GIF from an X (Twitter) post in three steps.",
+        "totalTime": "PT30S",
+        "step": [
+          {
+            "@type": "HowToStep",
+            "position": 1,
+            "name": "Copy the post link",
+            "text": "Open the X (Twitter) post with the video and copy its URL (it looks like https://x.com/username/status/…)."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 2,
+            "name": "Paste it into xDownload",
+            "text": "Paste the post URL into the box on xdownload.info and press Fetch."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 3,
+            "name": "Download the video",
+            "text": "Press Download to save the highest-quality MP4, or play it right in the page."
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is xDownload free to use?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. xDownload is completely free with no account, no sign-up and no software to install. Just paste a post URL and download."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do downloaded videos have a watermark?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. xDownload saves the original video file from X (Twitter) exactly as posted, with no watermark added."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What quality can I download?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "xDownload always picks the highest-bitrate progressive MP4 available for the post, so you get the best quality X offers for that video."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I download Twitter GIFs too?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Animated GIFs on X are really MP4 videos, and xDownload detects and downloads them the same way as normal videos."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work on my phone?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. xDownload runs entirely in the browser and works on iPhone, Android, tablets and desktop — no app required."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 
   <!-- ── Favicon: the X mark on a black rounded square, inline so there's no
        extra request and no asset file to ship. ── -->
@@ -210,6 +328,43 @@
       color: #aab8c2;
       margin-bottom: 0.25rem;
     }
+
+    /* ── Evergreen SEO / info section ── */
+    .info-section {
+      margin-top: 1rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--x-border);
+      color: var(--x-dark);
+    }
+    .info-section h2 {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      margin: 1.75rem 0 0.75rem;
+    }
+    .info-section h2:first-child { margin-top: 0; }
+    .info-section h3 {
+      font-size: 0.98rem;
+      font-weight: 700;
+      margin: 1.1rem 0 0.35rem;
+    }
+    .info-section p { font-size: 0.92rem; color: #3d4b57; margin-bottom: 0.75rem; }
+    .info-section code {
+      background: #eef3f4;
+      color: var(--x-dark);
+      padding: 0.05rem 0.35rem;
+      border-radius: 5px;
+      font-size: 0.82rem;
+    }
+    .info-steps, .info-features { padding-left: 1.1rem; }
+    .info-steps li, .info-features li {
+      font-size: 0.92rem;
+      color: #3d4b57;
+      margin-bottom: 0.55rem;
+    }
+    .info-features { list-style: none; padding-left: 0; }
+    .info-features i { color: var(--x-blue); }
+    .info-faq h3 { color: var(--x-dark); }
 
     /* ── Footer ── */
     .x-footer {
@@ -463,6 +618,65 @@
           <i class="bi bi-camera-video d-block mb-3"></i>
           <p class="mb-0">Paste an X post URL above to get started</p>
         </div>
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             Evergreen SEO content. This is plain, static markup (no Vue
+             directives), so it's always present in the served HTML for crawlers
+             to index — the interactive app above is JS-rendered and thin on
+             text on its own. The FAQ here MUST stay in sync with the FAQPage
+             JSON-LD in <head>; Google flags structured data that doesn't match
+             what a visitor actually sees.
+        ────────────────────────────────────────────────────────────────── -->
+        <section class="info-section" aria-labelledby="how-heading">
+          <h2 id="how-heading">How to download X (Twitter) videos</h2>
+          <p>
+            xDownload is a free online <strong>X / Twitter video downloader</strong>.
+            It saves videos and GIFs from any public post — in HD MP4, with no
+            watermark, no login and no app to install. Three steps:
+          </p>
+          <ol class="info-steps">
+            <li>
+              <strong>Copy the post link.</strong> Open the X (Twitter) post with the
+              video and copy its URL — it looks like
+              <code>https://x.com/username/status/…</code>.
+            </li>
+            <li>
+              <strong>Paste it above.</strong> Drop the URL into the box and press
+              <em>Fetch</em>. xDownload reads the post and lists every video it finds.
+            </li>
+            <li>
+              <strong>Download or play.</strong> Press <em>Download</em> to save the
+              highest-quality MP4, or play it right here in the page first.
+            </li>
+          </ol>
+
+          <h2 id="features-heading">Why use xDownload</h2>
+          <ul class="info-features">
+            <li><i class="bi bi-badge-hd me-2"></i><strong>HD MP4.</strong> Always grabs the highest-bitrate progressive video X offers.</li>
+            <li><i class="bi bi-droplet me-2"></i><strong>No watermark.</strong> You get the original file, exactly as posted.</li>
+            <li><i class="bi bi-person-x me-2"></i><strong>No login.</strong> No account, no sign-up, nothing to install.</li>
+            <li><i class="bi bi-phone me-2"></i><strong>Any device.</strong> Runs in the browser on iPhone, Android, tablet and desktop.</li>
+            <li><i class="bi bi-filetype-gif me-2"></i><strong>GIFs too.</strong> Twitter GIFs are really MP4s — xDownload saves them the same way.</li>
+          </ul>
+
+          <h2 id="faq-heading">Frequently asked questions</h2>
+          <div class="info-faq">
+            <h3>Is xDownload free to use?</h3>
+            <p>Yes. xDownload is completely free with no account, no sign-up and no software to install. Just paste a post URL and download.</p>
+
+            <h3>Do downloaded videos have a watermark?</h3>
+            <p>No. xDownload saves the original video file from X (Twitter) exactly as posted, with no watermark added.</p>
+
+            <h3>What quality can I download?</h3>
+            <p>xDownload always picks the highest-bitrate progressive MP4 available for the post, so you get the best quality X offers for that video.</p>
+
+            <h3>Can I download Twitter GIFs too?</h3>
+            <p>Yes. Animated GIFs on X are really MP4 videos, and xDownload detects and downloads them the same way as normal videos.</p>
+
+            <h3>Does it work on my phone?</h3>
+            <p>Yes. xDownload runs entirely in the browser and works on iPhone, Android, tablets and desktop — no app required.</p>
+          </div>
+        </section>
 
       </div>
     </div>

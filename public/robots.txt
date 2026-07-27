@@ -1,0 +1,8 @@
+# xDownload — allow everything; nothing here is private.
+# The /proxy endpoint is a Worker route, not a page, so there's nothing
+# for a crawler to index there — but we disallow it to save crawl budget.
+User-agent: *
+Allow: /
+Disallow: /proxy
+
+Sitemap: https://xdownload.info/sitemap.xml
