@@ -9,6 +9,13 @@
 // keeps the summary a short one-row-per-feature table instead of a wall of
 // every individual test.
 //
+// Outputs, all derived from a single parse of the XML:
+//   • $GITHUB_STEP_SUMMARY — the table, on the Actions run summary page (CI).
+//   • reports/report.md     — the same Markdown, for reuse.
+//   • reports/check.json    — a GitHub check-run payload carrying that Markdown
+//     as its summary, which ci.yml POSTs so the "Jest Test Report" check page
+//     shows the full scenario table too.
+//
 // Run by .github/workflows/ci.yml after `npm test`. Locally, `node
 // scripts/junit-to-summary.js` prints the same Markdown to stdout.
 const fs = require('fs');
@@ -85,6 +92,22 @@ const md = [
   ...(failing.length ? ['', '### Failures', '', ...failing] : []),
   '',
 ].join('\n');
+
+const failed = failures + errors;
+
+// Reusable Markdown + a check-run payload for ci.yml to POST. The check summary
+// renders this same table on the "Jest Test Report" check page.
+fs.writeFileSync('reports/report.md', md);
+fs.writeFileSync('reports/check.json', JSON.stringify({
+  name: 'Jest Test Report',
+  head_sha: process.env.REPORT_HEAD_SHA || '',
+  status: 'completed',
+  conclusion: failed > 0 ? 'failure' : 'success',
+  output: {
+    title: `${passed}/${total} tests passed`,
+    summary: md,
+  },
+}, null, 2));
 
 const out = process.env.GITHUB_STEP_SUMMARY;
 if (out) {

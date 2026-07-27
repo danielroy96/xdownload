@@ -45,28 +45,23 @@ jobs:
       - name: Run Tests
         run: npm test
 
-      # Detailed, per-test report as a Check run — visible next to the "test"
-      # status check on the commit and in the PR's Checks tab.
-      - name: Publish Jest Test Report (Checks)
-        uses: dorny/test-reporter@v3
+      # Build the report once from reports/junit.xml: the script renders the
+      # per-feature Markdown table onto the Actions run summary
+      # ($GITHUB_STEP_SUMMARY) and also writes reports/report.md +
+      # reports/check.json for the publish step below.
+      - name: Build Test Report
         if: ${{ !cancelled() }}
-        with:
-          name: Jest Test Report
-          path: reports/junit.xml
-          reporter: jest-junit
-          # v2 defaults this to true, which routes the report onto the Actions
-          # run summary (where our own step already renders it) and skips the
-          # standalone Check run. Force false so we get a real "Jest test report"
-          # Check on the commit/PR — the surface we actually want here.
-          use-actions-summary: false
-          # Keep a green report tidy: show the per-suite rollup always, but only
-          # enumerate individual tests when a suite has failures — so the report
-          # is a short summary on success and a focused list of what broke on
-          # failure, instead of a wall of every passing test.
-          list-suites: all
-          list-tests: failed
-
-      # Same data rendered onto the Actions run's own summary page.
-      - name: Write Test Report (Run Summary)
-        if: ${{ !cancelled() }}
+        env:
+          # SHA the check attaches to: the PR head on pull_request, else the push SHA.
+          REPORT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/junit-to-summary.js
+
+      # Publish that same report as the "Jest Test Report" check on the
+      # commit/PR, so the check page shows the full scenario table (not just a
+      # per-file summary). Posts the API directly with gh rather than a
+      # Node-based action, which avoids reintroducing the Node-20 warning.
+      - name: Publish Jest Test Report (Checks)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST repos/${{ github.repository }}/check-runs --input reports/check.json
