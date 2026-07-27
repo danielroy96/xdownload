@@ -16,9 +16,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# checks:write lets dorny/test-reporter publish the per-test report as a Check
+# run on the commit/PR; the defaults stay read-only.
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   test:
-    name: test
+    name: Run Jest Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,5 +39,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      # Jest writes reports/junit.xml (see jest.config.js). `npm test` exits
+      # non-zero on failure so the job still goes red — but the two steps below
+      # run with `if: ${{ !cancelled() }}` so the report is published either way.
+      - name: Run Tests
         run: npm test
+
+      # Build the report once from reports/junit.xml: the script renders the
+      # per-feature Markdown table onto the Actions run summary
+      # ($GITHUB_STEP_SUMMARY) and also writes reports/report.md +
+      # reports/check.json for the publish step below.
+      - name: Build Test Report
+        if: ${{ !cancelled() }}
+        env:
+          # SHA the check attaches to: the PR head on pull_request, else the push SHA.
+          REPORT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/junit-to-summary.js
+
+      # Publish that same report as the "Jest Test Report" check on the
+      # commit/PR, so the check page shows the full scenario table (not just a
+      # per-file summary). Posts the API directly with gh rather than a
+      # Node-based action, which avoids reintroducing the Node-20 warning.
+      - name: Publish Jest Test Report (Checks)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST repos/${{ github.repository }}/check-runs --input reports/check.json
