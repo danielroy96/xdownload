@@ -69,6 +69,9 @@ The worker layer alone is the right quick check after a deploy. Run `all` (or
   rotting hardcoded URL): 200 with `ACAO:*` and a video content-type;
   `Range` → 206 + `Content-Range` (seekable playback); `&dl=` → `Content-Disposition:
   attachment` with a safe filename.
+- `/proxy` edge caching: a full (non-Range) GET carries a long-lived, immutable
+  `Cache-Control` (Cloudflare edge + browser caching of immutable twimg media);
+  a `Range` 206 is **not** marked immutable (partial bodies stay uncached).
 
 **Full-journey browser (`browser.e2e.spec.mjs`)**
 - App shell loads (title, URL input, action button).
