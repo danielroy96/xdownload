@@ -175,3 +175,41 @@ test('proxy: &dl= forces an attachment download with a safe filename', async () 
   assert.match(cd, /attachment/)
   assert.match(cd, /filename="my clip\.mp4"/)
 })
+
+// ── /proxy contract: edge caching ──────────────────────────────────────────
+// twimg media is immutable per URL, so a full (non-Range) GET is stamped with a
+// long-lived, immutable Cache-Control — letting Cloudflare's edge (and the
+// browser) cache it and cutting repeat upstream fetches on the free plan. Range
+// requests are deliberately NOT marked immutable: a 206 partial body must never
+// be stored and re-served as if it were the whole file.
+
+test('proxy: full GET marks immutable media cacheable at the edge', async () => {
+  assert.ok(liveVideoUrl, 'could not discover a live video URL from fxtwitter')
+  // Must be a GET with no Range (the cacheable path); HEAD/Range don't qualify.
+  const res = await fetchT(`${BASE}/proxy?url=${encodeURIComponent(liveVideoUrl)}`)
+  try {
+    assert.equal(res.status, 200)
+    const cc = res.headers.get('cache-control') || ''
+    assert.match(cc, /max-age=\d+/)
+    assert.match(cc, /immutable/)
+  } finally {
+    // Don't pull the whole video down just to read headers.
+    await res.body?.cancel()
+  }
+})
+
+test('proxy: Range responses are not marked immutable (partial bodies stay uncached)', async () => {
+  assert.ok(liveVideoUrl, 'could not discover a live video URL from fxtwitter')
+  const res = await fetchT(`${BASE}/proxy?url=${encodeURIComponent(liveVideoUrl)}`, {
+    headers: { Range: 'bytes=0-1023' },
+  })
+  try {
+    assert.equal(res.status, 206)
+    // The Worker only stamps its own immutable directive on full 200s. (twimg's
+    // own pass-through Cache-Control may still be present — we assert the
+    // Worker didn't ADD `immutable`, not that the header is absent entirely.)
+    assert.doesNotMatch(res.headers.get('cache-control') || '', /immutable/)
+  } finally {
+    await res.body?.cancel()
+  }
+})
