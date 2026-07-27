@@ -4,6 +4,11 @@
 // just to draw a table. jest-junit's output is flat and predictable, so a
 // couple of regexes over the raw XML are enough.
 //
+// Grouping is by feature — i.e. each Jest `describe` block, which jest.config.js
+// maps onto the testcase `classname` (see the jest-junit options there). That
+// keeps the summary a short one-row-per-feature table instead of a wall of
+// every individual test.
+//
 // Run by .github/workflows/ci.yml after `npm test`. Locally, `node
 // scripts/junit-to-summary.js` prints the same Markdown to stdout.
 const fs = require('fs');
@@ -17,12 +22,14 @@ function unescape(s) {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#10;/g, ' ')
+    .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&');
 }
 
-// Pull an attribute out of an opening tag string.
+// Pull an attribute out of an opening tag string. The \b guards against a
+// short name matching the tail of a longer one — e.g. `name` inside `classname`.
 function attr(tag, name) {
-  const m = tag.match(new RegExp(`${name}="([^"]*)"`));
+  const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`));
   return m ? unescape(m[1]) : '';
 }
 
@@ -40,27 +47,30 @@ const errors = Number(attr(rootTag, 'errors')) || 0;
 const time = attr(rootTag, 'time');
 const passed = total - failures - errors;
 
-// Per-suite rollup for the table.
-const suites = [...xml.matchAll(/<testsuite\b[^>]*>/g)].map((m) => m[0]);
-const rows = suites.map((tag) => {
-  const t = Number(attr(tag, 'tests')) || 0;
-  const f = Number(attr(tag, 'failures')) || 0;
-  const e = Number(attr(tag, 'errors')) || 0;
-  const skipped = Number(attr(tag, 'skipped')) || 0;
-  const ok = f === 0 && e === 0;
-  return `| ${ok ? '✅' : '❌'} | \`${attr(tag, 'name')}\` | ${t} | ${t - f - e - skipped} | ${f + e} | ${skipped} | ${attr(tag, 'time')}s |`;
-});
+// One row per feature (the testcase classname = the Jest `describe` block).
+// Insertion order is preserved so the table follows the source file order.
+const groups = new Map();
+const failing = [];
+for (const m of xml.matchAll(/<testcase\b([^>]*)>([\s\S]*?)<\/testcase>/g)) {
+  const open = `<testcase ${m[1]}>`;
+  const feature = attr(open, 'classname') || '(ungrouped)';
+  const failed = /<(failure|error)\b/.test(m[2]);
 
-// Collect the failing cases (with their <failure> message) so a red build
-// tells you *what* broke without leaving the summary page.
-const failing = [...xml.matchAll(/<testcase\b([^>]*)>([\s\S]*?)<\/testcase>/g)]
-  .filter((m) => /<(failure|error)\b/.test(m[2]))
-  .map((m) => {
-    const name = attr(`<testcase ${m[1]}>`, 'name');
+  if (!groups.has(feature)) groups.set(feature, { total: 0, failed: 0 });
+  const g = groups.get(feature);
+  g.total += 1;
+  if (failed) {
+    g.failed += 1;
     const msg = (m[2].match(/<(?:failure|error)[^>]*>([\s\S]*?)<\/(?:failure|error)>/) || [])[1] || '';
     const firstLine = unescape(msg).trim().split('\n')[0];
-    return `- **${name}**\n  \`\`\`\n  ${firstLine}\n  \`\`\``;
-  });
+    failing.push(`- **${feature} › ${attr(open, 'name')}**\n  \`\`\`\n  ${firstLine}\n  \`\`\``);
+  }
+}
+
+const rows = [...groups.entries()].map(([feature, g]) => {
+  const ok = g.failed === 0;
+  return `| ${ok ? '✅' : '❌'} | ${feature} | ${g.total} | ${g.total - g.failed} | ${g.failed} |`;
+});
 
 const status = failures + errors === 0 ? '✅ All tests passed' : `❌ ${failures + errors} test(s) failed`;
 
@@ -69,8 +79,8 @@ const md = [
   '',
   `**${status}** — ${passed}/${total} passed${time ? ` in ${time}s` : ''}.`,
   '',
-  '| | Suite | Tests | Passed | Failed | Skipped | Time |',
-  '| :-: | --- | --: | --: | --: | --: | --: |',
+  '| | Feature | Tests | Passed | Failed |',
+  '| :-: | --- | --: | --: | --: |',
   ...rows,
   ...(failing.length ? ['', '### Failures', '', ...failing] : []),
   '',

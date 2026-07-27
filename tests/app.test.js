@@ -16,8 +16,8 @@ function abortError() {
   return e
 }
 
-describe('module constants', () => {
-  test('PROXY_BASE points at a live https Worker origin (not workers.dev)', () => {
+describe('Configuration guards', () => {
+  test('the download proxy points at the live Worker, not a dead workers.dev', () => {
     const { PROXY_BASE } = loadApp()
     expect(PROXY_BASE).toBe('https://xdownload.info')
     // The classic breakage was a dead *.workers.dev subdomain — guard it.
@@ -25,15 +25,15 @@ describe('module constants', () => {
     expect(PROXY_BASE).not.toMatch(/\/$/) // no trailing slash
   })
 
-  test('ADSENSE_SLOT is the real slot, not the dormant placeholder', () => {
+  test('the ad slot is the real one, not the placeholder', () => {
     const { ADSENSE_SLOT } = loadApp()
     expect(ADSENSE_SLOT).toBe('5120476027')
     expect(ADSENSE_SLOT.startsWith('1111')).toBe(false)
   })
 })
 
-describe('data() defaults', () => {
-  test('initial state is clean and proxyBase has trailing slashes trimmed', () => {
+describe('Initial state', () => {
+  test('starts empty with the proxy base normalized', () => {
     const { options } = loadApp()
     const d = options.data()
     expect(d.url).toBe('')
@@ -45,7 +45,7 @@ describe('data() defaults', () => {
   })
 })
 
-describe('parseTweetUrl', () => {
+describe('Understanding pasted post URLs', () => {
   const cases = [
     ['https://x.com/jack/status/20', { username: 'jack', tweetId: '20' }],
     ['https://twitter.com/jack/status/20', { username: 'jack', tweetId: '20' }],
@@ -58,7 +58,7 @@ describe('parseTweetUrl', () => {
     // surrounding whitespace trimmed
     ['   https://x.com/jack/status/20  ', { username: 'jack', tweetId: '20' }],
   ]
-  test.each(cases)('parses %s', (input, expected) => {
+  test.each(cases)('accepts %s', (input, expected) => {
     const { ctx } = makeInstance()
     expect(ctx.parseTweetUrl(input)).toEqual(expected)
   })
@@ -70,14 +70,14 @@ describe('parseTweetUrl', () => {
     'not a url at all',
     'https://x.com/status/20',       // missing username segment
   ]
-  test.each(bad)('rejects %s → null', (input) => {
+  test.each(bad)('rejects a non-post link: %s', (input) => {
     const { ctx } = makeInstance()
     expect(ctx.parseTweetUrl(input)).toBeNull()
   })
 })
 
-describe('proxied / playSrc', () => {
-  test('proxied builds an encoded /proxy URL against proxyBase', () => {
+describe('Building playback & download URLs', () => {
+  test('routes a video through the download proxy', () => {
     const { ctx } = makeInstance()
     const url = ctx.proxied('https://video.twimg.com/a b.mp4')
     expect(url).toBe(
@@ -86,25 +86,25 @@ describe('proxied / playSrc', () => {
     )
   })
 
-  test('proxied appends an encoded &dl filename when provided', () => {
+  test('includes the download filename when one is given', () => {
     const { ctx } = makeInstance()
     const url = ctx.proxied('https://video.twimg.com/x.mp4', 'jack_20.mp4')
     expect(url).toContain('&dl=jack_20.mp4')
   })
 
-  test('playSrc routes through the proxy when proxyBase is set', () => {
+  test('plays through the proxy when one is configured', () => {
     const { ctx } = makeInstance()
     expect(ctx.playSrc({ url: 'https://video.twimg.com/x.mp4' })).toContain('/proxy?url=')
   })
 
-  test('playSrc uses the direct url when proxyBase is empty', () => {
+  test('plays the video directly when no proxy is configured', () => {
     const { ctx } = makeInstance({ proxyBase: '' })
     expect(ctx.playSrc({ url: 'https://video.twimg.com/x.mp4' })).toBe('https://video.twimg.com/x.mp4')
   })
 })
 
-describe('bestMp4Url', () => {
-  test('picks the highest-bitrate progressive mp4 variant', () => {
+describe('Choosing the best video quality', () => {
+  test('picks the highest-quality MP4', () => {
     const { ctx } = makeInstance()
     const video = {
       url: 'https://video.twimg.com/fallback.mp4',
@@ -117,7 +117,7 @@ describe('bestMp4Url', () => {
     expect(ctx.bestMp4Url(video)).toBe('https://video.twimg.com/high.mp4')
   })
 
-  test('never selects an .m3u8 HLS playlist', () => {
+  test('never picks an unplayable HLS playlist', () => {
     const { ctx } = makeInstance()
     const video = {
       url: 'https://video.twimg.com/fallback.mp4',
@@ -129,7 +129,7 @@ describe('bestMp4Url', () => {
     expect(ctx.bestMp4Url(video)).toBe('https://video.twimg.com/prog.mp4')
   })
 
-  test('supports the `formats` alias for variants', () => {
+  test('understands the alternate "formats" field', () => {
     const { ctx } = makeInstance()
     const video = {
       url: 'https://video.twimg.com/fallback.mp4',
@@ -138,78 +138,78 @@ describe('bestMp4Url', () => {
     expect(ctx.bestMp4Url(video)).toBe('https://video.twimg.com/f.mp4')
   })
 
-  test('falls back to video.url when there are no mp4 variants', () => {
+  test('falls back to the base URL when no variants are listed', () => {
     const { ctx } = makeInstance()
     expect(ctx.bestMp4Url({ url: 'https://video.twimg.com/only.mp4' }))
       .toBe('https://video.twimg.com/only.mp4')
   })
 })
 
-describe('buildFilename', () => {
-  test('uses author handle + video id', () => {
+describe('Naming the downloaded file', () => {
+  test('names the file after the author and post', () => {
     const { ctx } = makeInstance({ tweet: { author: { screen_name: 'jack' } }, videos: [{}] })
     expect(ctx.buildFilename({ id: '999' }, 0)).toBe('jack_999.mp4')
   })
 
-  test('adds a 1-based index suffix when the post has multiple videos', () => {
+  test('numbers the files when a post has several videos', () => {
     const { ctx } = makeInstance({ tweet: { author: { screen_name: 'jack' } }, videos: [{}, {}] })
     expect(ctx.buildFilename({ id: '999' }, 1)).toBe('jack_999_2.mp4')
   })
 
-  test('falls back to "x" handle and tweet id when fields are missing', () => {
+  test('still builds a sensible name when data is missing', () => {
     const { ctx } = makeInstance({ tweet: { id: '42' }, videos: [{}] })
     expect(ctx.buildFilename({}, 0)).toBe('x_42.mp4')
   })
 })
 
-describe('tryFetchVideo', () => {
-  test('returns a Blob for a valid, large, video-typed response', async () => {
+describe('Fetching a video safely', () => {
+  test('accepts a genuine video response', async () => {
     const blob = { size: 500_000, type: 'video/mp4' }
     global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: async () => blob })
     const { ctx } = makeInstance()
     await expect(ctx.tryFetchVideo('https://x/x.mp4')).resolves.toBe(blob)
   })
 
-  test('returns null on non-ok status', async () => {
+  test('rejects a failed (non-OK) response', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, blob: async () => ({}) })
     const { ctx } = makeInstance()
     await expect(ctx.tryFetchVideo('https://x/x.mp4')).resolves.toBeNull()
   })
 
-  test('rejects tiny blobs (proxy error page masquerading as 200)', async () => {
+  test('rejects a tiny blob — an error page pretending to be a video', async () => {
     const blob = { size: 512, type: 'text/html' }
     global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: async () => blob })
     const { ctx } = makeInstance()
     await expect(ctx.tryFetchVideo('https://x/x')).resolves.toBeNull()
   })
 
-  test('rejects a large but non-video MIME type', async () => {
+  test('rejects a non-video file', async () => {
     const blob = { size: 500_000, type: 'application/json' }
     global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: async () => blob })
     const { ctx } = makeInstance()
     await expect(ctx.tryFetchVideo('https://x/x')).resolves.toBeNull()
   })
 
-  test('accepts octet-stream (some proxies omit the video type)', async () => {
+  test('accepts octet-stream, which some proxies send instead of a video type', async () => {
     const blob = { size: 500_000, type: 'application/octet-stream' }
     global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: async () => blob })
     const { ctx } = makeInstance()
     await expect(ctx.tryFetchVideo('https://x/x')).resolves.toBe(blob)
   })
 
-  test('returns null when fetch throws / aborts', async () => {
+  test('gives up quietly when the download fails', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('aborted'))
     const { ctx } = makeInstance()
     await expect(ctx.tryFetchVideo('https://x/x')).resolves.toBeNull()
   })
 })
 
-describe('fetchVideos (fxtwitter integration)', () => {
+describe("Fetching a post's videos", () => {
   function mockJson(body, ok = true) {
     global.fetch = jest.fn().mockResolvedValue({ ok, json: async () => body })
   }
 
-  test('bails early with a friendly error on an invalid URL (no network call)', async () => {
+  test('refuses an invalid URL without hitting the network', async () => {
     global.fetch = jest.fn()
     const { ctx } = makeInstance({ url: 'https://youtube.com/watch?v=x' })
     await ctx.fetchVideos()
@@ -218,7 +218,7 @@ describe('fetchVideos (fxtwitter integration)', () => {
     expect(ctx.loading).toBe(false)
   })
 
-  test('populates tweet + videos on success and toasts the count', async () => {
+  test('loads the videos and confirms how many were found', async () => {
     mockJson({
       code: 200,
       tweet: {
@@ -234,7 +234,7 @@ describe('fetchVideos (fxtwitter integration)', () => {
     expect(ctx.toasts.some((t) => /1 video found/.test(t.message))).toBe(true)
   })
 
-  test('post with no videos toasts a warning and leaves videos empty', async () => {
+  test('warns when a post has no videos', async () => {
     mockJson({ code: 200, tweet: { media: { videos: [] } } })
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
@@ -246,7 +246,7 @@ describe('fetchVideos (fxtwitter integration)', () => {
     [404, /not found/i],
     [401, /protected account/i],
     [403, /restricted/i],
-  ])('maps fxtwitter code %s to a friendly message', async (code, re) => {
+  ])('turns fxtwitter error %s into a friendly message', async (code, re) => {
     mockJson({ code }, true)
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
@@ -254,14 +254,14 @@ describe('fetchVideos (fxtwitter integration)', () => {
     expect(ctx.loading).toBe(false)
   })
 
-  test('unknown code produces a generic error including the code', async () => {
+  test('shows a generic message for an unrecognized error', async () => {
     mockJson({ code: 500 }, false)
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
     expect(ctx.error).toMatch(/error 500/)
   })
 
-  test('network TypeError becomes a connection-error message', async () => {
+  test('explains a dropped connection', async () => {
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'))
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
@@ -269,8 +269,8 @@ describe('fetchVideos (fxtwitter integration)', () => {
   })
 })
 
-describe('clearInput', () => {
-  test('resets url, tweet, videos and error back to the empty state', () => {
+describe('Clearing the form', () => {
+  test('resets everything back to the empty state', () => {
     const { ctx } = makeInstance({
       url: 'https://x.com/jack/status/20',
       tweet: { id: '20' },
@@ -285,8 +285,8 @@ describe('clearInput', () => {
   })
 })
 
-describe('fetchVideos — hardening', () => {
-  test('a non-JSON (HTML) response yields a friendly service error, not a SyntaxError', async () => {
+describe('Fetching videos — error resilience', () => {
+  test('survives a non-JSON response with a friendly message', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => { throw new SyntaxError('Unexpected token < in JSON') },
@@ -298,7 +298,7 @@ describe('fetchVideos — hardening', () => {
     expect(ctx.loading).toBe(false)
   })
 
-  test('a timeout / abort yields a timeout message', async () => {
+  test('shows a timeout message when the API is slow', async () => {
     global.fetch = jest.fn().mockRejectedValue(abortError())
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
@@ -306,7 +306,7 @@ describe('fetchVideos — hardening', () => {
     expect(ctx.loading).toBe(false)
   })
 
-  test('passes an AbortSignal to fetch so the request can be timed out', async () => {
+  test('sets a timeout on the request', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 200, tweet: { media: { videos: [] } } }) })
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
@@ -315,7 +315,7 @@ describe('fetchVideos — hardening', () => {
   })
 })
 
-describe('pasteAndFetch', () => {
+describe('Paste-and-go', () => {
   function stubClipboard(impl) {
     Object.defineProperty(global.navigator, 'clipboard', {
       value: { readText: impl },
@@ -323,7 +323,7 @@ describe('pasteAndFetch', () => {
     })
   }
 
-  test('reads a URL from the clipboard, sets it, and fetches', async () => {
+  test('fetches straight from a copied URL', async () => {
     stubClipboard(async () => 'https://x.com/jack/status/20')
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -336,7 +336,7 @@ describe('pasteAndFetch', () => {
     expect(ctx.videos).toHaveLength(1)
   })
 
-  test('empty clipboard warns and does not fetch', async () => {
+  test('warns when the clipboard is empty', async () => {
     stubClipboard(async () => '   ')
     global.fetch = jest.fn()
     const { ctx } = makeInstance()
@@ -345,7 +345,7 @@ describe('pasteAndFetch', () => {
     expect(ctx.toasts.some((t) => /empty/i.test(t.message))).toBe(true)
   })
 
-  test('blocked clipboard (throws) warns and does not fetch', async () => {
+  test('warns when clipboard access is blocked', async () => {
     stubClipboard(async () => { throw new Error('denied') })
     global.fetch = jest.fn()
     const { ctx } = makeInstance()
@@ -355,7 +355,7 @@ describe('pasteAndFetch', () => {
   })
 })
 
-describe('mounted() cookie notice', () => {
+describe('Cookie notice', () => {
   function runMounted(overrides = {}) {
     const { options } = loadApp()
     const ctx = { ...options.data(), $nextTick: (fn) => fn && fn(), ...overrides }
@@ -363,21 +363,21 @@ describe('mounted() cookie notice', () => {
     return ctx
   }
 
-  test('shows the notice when it has never been acknowledged', () => {
+  test('appears on a first visit', () => {
     localStorage.clear()
     const ctx = runMounted()
     expect(ctx.showCookieNotice).toBe(true)
   })
 
-  test('hides the notice once acknowledgement is stored', () => {
+  test('stays hidden once accepted', () => {
     localStorage.setItem('cookieNoticeAck', '1')
     const ctx = runMounted()
     expect(ctx.showCookieNotice).toBe(false)
   })
 })
 
-describe('acceptCookies', () => {
-  test('hides the notice and persists acknowledgement', () => {
+describe('Accepting the cookie notice', () => {
+  test('hides the notice and remembers the choice', () => {
     localStorage.clear()
     const { ctx } = makeInstance({ showCookieNotice: true })
     ctx.acceptCookies()
@@ -386,8 +386,8 @@ describe('acceptCookies', () => {
   })
 })
 
-describe('toast', () => {
-  test('pushes a toast then auto-dismisses it after the timeout', () => {
+describe('Toast notifications', () => {
+  test('appears then disappears on its own', () => {
     jest.useFakeTimers()
     try {
       const { ctx } = makeInstance()
@@ -402,8 +402,8 @@ describe('toast', () => {
   })
 })
 
-describe('saveBlob', () => {
-  test('creates an object URL, clicks a download anchor, and revokes later', () => {
+describe('Saving a file to disk', () => {
+  test('triggers the browser download and cleans up afterwards', () => {
     jest.useFakeTimers()
     try {
       const createSpy = jest.fn(() => 'blob:fake')
@@ -429,8 +429,8 @@ describe('saveBlob', () => {
   })
 })
 
-describe('downloadVideo (fallback chain)', () => {
-  test('saves via the first strategy that yields a valid blob', async () => {
+describe('Downloading a video (with fallbacks)', () => {
+  test('saves as soon as one source works', async () => {
     const blob = { size: 500_000, type: 'video/mp4' }
     global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: async () => blob })
     const saveBlob = jest.fn()
@@ -447,7 +447,7 @@ describe('downloadVideo (fallback chain)', () => {
     expect(ctx.downloadingIdx).toBeNull()
   })
 
-  test('falls through every fetch strategy then opens a manual-save anchor', async () => {
+  test('tries every source, then offers a manual save', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, blob: async () => ({}) })
     const clickSpy = jest
       .spyOn(window.HTMLAnchorElement.prototype, 'click')
@@ -465,7 +465,7 @@ describe('downloadVideo (fallback chain)', () => {
     clickSpy.mockRestore()
   })
 
-  test('with no Worker configured, the chain drops to 5 attempts (direct + 4 proxies)', async () => {
+  test('skips the Worker step when none is configured', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, blob: async () => ({}) })
     const clickSpy = jest
       .spyOn(window.HTMLAnchorElement.prototype, 'click')

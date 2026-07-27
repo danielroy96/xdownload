@@ -19,6 +19,19 @@ module.exports = {
   // Actions run summary. See .github/workflows/ci.yml.
   reporters: [
     'default',
-    ['jest-junit', { outputDirectory: 'reports', outputName: 'junit.xml' }],
+    ['jest-junit', {
+      outputDirectory: 'reports',
+      outputName: 'junit.xml',
+      // By default jest-junit bakes the whole "describe + test" path into every
+      // testcase's classname, which flattens the report. Split them: the
+      // describe block becomes the group (classname), the test title stays on
+      // its own. That gives dorny clean per-feature headings and lets our
+      // summary script group by feature. suiteNameTemplate labels the two
+      // file-level suites by filename rather than their first describe.
+      classNameTemplate: '{classname}',
+      titleTemplate: '{title}',
+      ancestorSeparator: ' › ',
+      suiteNameTemplate: '{filename}',
+    }],
   ],
 }

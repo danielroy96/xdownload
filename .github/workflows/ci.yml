@@ -59,6 +59,12 @@ jobs:
           # standalone Check run. Force false so we get a real "Jest test report"
           # Check on the commit/PR — the surface we actually want here.
           use-actions-summary: false
+          # Keep a green report tidy: show the per-suite rollup always, but only
+          # enumerate individual tests when a suite has failures — so the report
+          # is a short summary on success and a focused list of what broke on
+          # failure, instead of a wall of every passing test.
+          list-suites: all
+          list-tests: failed
 
       # Same data rendered onto the Actions run's own summary page.
       - name: Write test report (run summary)

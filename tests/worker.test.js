@@ -28,15 +28,15 @@ function req(path, init) {
 
 const TWIMG = 'https://video.twimg.com/ext_tw_video/1/pu/vid/720x1280/abc.mp4'
 
-describe('static asset hosting (non-/proxy routes)', () => {
-  test('delegates "/" to the ASSETS binding', async () => {
+describe('Serving the app', () => {
+  test('serves the homepage', async () => {
     const { env, assetsFetch } = makeEnv()
     const res = await worker.fetch(req('/'), env)
     expect(assetsFetch).toHaveBeenCalledTimes(1)
     expect(await res.text()).toBe('<html>app</html>')
   })
 
-  test('delegates other paths (e.g. /privacy.html) to ASSETS', async () => {
+  test('serves other pages like /privacy.html', async () => {
     const { env, assetsFetch } = makeEnv()
     await worker.fetch(req('/privacy.html'), env)
     expect(assetsFetch).toHaveBeenCalledTimes(1)
@@ -44,7 +44,7 @@ describe('static asset hosting (non-/proxy routes)', () => {
     expect(new URL(handed.url).pathname).toBe('/privacy.html')
   })
 
-  test('does NOT reach upstream fetch for asset routes', async () => {
+  test('never fetches upstream video for a page load', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('x'))
     const { env } = makeEnv()
     await worker.fetch(req('/index.html'), env)
@@ -53,8 +53,8 @@ describe('static asset hosting (non-/proxy routes)', () => {
   })
 })
 
-describe('/proxy — request validation', () => {
-  test('OPTIONS preflight returns 204-ish with CORS headers, no upstream call', async () => {
+describe('Proxy — only serves legitimate twimg video', () => {
+  test('answers a CORS preflight without calling upstream', async () => {
     const spy = jest.spyOn(global, 'fetch')
     const { env } = makeEnv()
     const res = await worker.fetch(req('/proxy', { method: 'OPTIONS' }), env)
@@ -65,14 +65,14 @@ describe('/proxy — request validation', () => {
     spy.mockRestore()
   })
 
-  test('POST is rejected 405', async () => {
+  test('rejects non-GET methods (405)', async () => {
     const { env } = makeEnv()
     const res = await worker.fetch(req('/proxy', { method: 'POST' }), env)
     expect(res.status).toBe(405)
     expect(await res.json()).toEqual({ error: 'method not allowed' })
   })
 
-  test('missing ?url → 400', async () => {
+  test('rejects a request with no url (400)', async () => {
     const { env } = makeEnv()
     const res = await worker.fetch(req('/proxy'), env)
     expect(res.status).toBe(400)
@@ -80,7 +80,7 @@ describe('/proxy — request validation', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
   })
 
-  test('malformed ?url → 400 invalid url', async () => {
+  test('rejects a malformed url (400)', async () => {
     const { env } = makeEnv()
     const res = await worker.fetch(
       req(`/proxy?url=${encodeURIComponent('h ttp://not a url')}`),
@@ -90,7 +90,7 @@ describe('/proxy — request validation', () => {
     expect(await res.json()).toEqual({ error: 'invalid url' })
   })
 
-  test('non-twimg host → 403 host not allowed', async () => {
+  test('blocks non-twimg hosts (403)', async () => {
     const { env } = makeEnv()
     const res = await worker.fetch(
       req(`/proxy?url=${encodeURIComponent('https://example.com/x.mp4')}`),
@@ -100,7 +100,7 @@ describe('/proxy — request validation', () => {
     expect(await res.json()).toEqual({ error: 'host not allowed' })
   })
 
-  test('http (non-https) twimg URL → 403 (protocol locked to https)', async () => {
+  test('blocks non-https urls (403)', async () => {
     const { env } = makeEnv()
     const res = await worker.fetch(
       req(`/proxy?url=${encodeURIComponent('http://video.twimg.com/x.mp4')}`),
@@ -113,7 +113,7 @@ describe('/proxy — request validation', () => {
     'video.twimg.com',
     'pbs.twimg.com',
     'amp.twimg.com',
-  ])('allows whitelisted host %s', async (host) => {
+  ])('allows the twimg host %s', async (host) => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response('bytes', { status: 200, headers: { 'Content-Type': 'video/mp4' } })
     )
@@ -127,7 +127,7 @@ describe('/proxy — request validation', () => {
     spy.mockRestore()
   })
 
-  test('rejects look-alike host (evil-video.twimg.com.attacker.com)', async () => {
+  test('blocks look-alike hostnames (403)', async () => {
     const { env } = makeEnv()
     const res = await worker.fetch(
       req(`/proxy?url=${encodeURIComponent('https://video.twimg.com.attacker.com/x.mp4')}`),
@@ -137,8 +137,8 @@ describe('/proxy — request validation', () => {
   })
 })
 
-describe('/proxy — successful streaming', () => {
-  test('spoofs Referer + User-Agent and re-serves upstream bytes with CORS', async () => {
+describe('Proxy — streaming video to the browser', () => {
+  test('fetches with a twitter Referer and re-serves the bytes with CORS', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response('VIDEOBYTES', {
         status: 200,
@@ -161,7 +161,7 @@ describe('/proxy — successful streaming', () => {
     spy.mockRestore()
   })
 
-  test('forwards Range header so the <video> can seek', async () => {
+  test('forwards Range requests so the player can seek', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response('partial', { status: 206 })
     )
@@ -175,7 +175,7 @@ describe('/proxy — successful streaming', () => {
     spy.mockRestore()
   })
 
-  test('preserves upstream status (e.g. 206 Partial Content)', async () => {
+  test('preserves the upstream status code', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response('partial', { status: 206, statusText: 'Partial Content' })
     )
@@ -185,7 +185,7 @@ describe('/proxy — successful streaming', () => {
     spy.mockRestore()
   })
 
-  test('&dl sets a Content-Disposition attachment with a sanitized filename', async () => {
+  test('forces a download with a safe filename when &dl is set', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('bytes', { status: 200 }))
     const { env } = makeEnv()
     const res = await worker.fetch(
@@ -200,7 +200,7 @@ describe('/proxy — successful streaming', () => {
     spy.mockRestore()
   })
 
-  test('HEAD requests are allowed and forwarded as HEAD', async () => {
+  test('forwards HEAD requests', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     const { env } = makeEnv()
     const res = await worker.fetch(
@@ -213,8 +213,8 @@ describe('/proxy — successful streaming', () => {
   })
 })
 
-describe('/proxy — edge caching', () => {
-  test('full GET (no Range) marks the 200 immutable + cacheable', async () => {
+describe('Proxy — edge caching', () => {
+  test('caches a full video response at the edge', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('bytes', { status: 200 }))
     const { env } = makeEnv()
     const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
@@ -224,7 +224,7 @@ describe('/proxy — edge caching', () => {
     spy.mockRestore()
   })
 
-  test('Range request is NOT cached (partial body must not be stored)', async () => {
+  test('never caches a partial (Range) response', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('partial', { status: 206 }))
     const { env } = makeEnv()
     const res = await worker.fetch(
@@ -236,7 +236,7 @@ describe('/proxy — edge caching', () => {
     spy.mockRestore()
   })
 
-  test('non-200 upstream is not marked cacheable', async () => {
+  test('never caches an upstream error', async () => {
     const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('nope', { status: 403 }))
     const { env } = makeEnv()
     const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
@@ -245,8 +245,8 @@ describe('/proxy — edge caching', () => {
   })
 })
 
-describe('/proxy — upstream failure', () => {
-  test('network error → 502 with detail', async () => {
+describe('Proxy — upstream failure', () => {
+  test('returns 502 when the upstream fetch fails', async () => {
     const spy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNRESET'))
     const { env } = makeEnv()
     const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
