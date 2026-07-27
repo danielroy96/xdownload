@@ -337,8 +337,7 @@
         <!-- ── Ad unit ── -->
         <div class="ad-slot">
           <div class="ad-label">Advertisement</div>
-          <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3160807008877535"
-                  crossorigin="anonymous"></script>
+
           <!-- Main -->
           <ins class="adsbygoogle"
                style="display:block"
@@ -346,9 +345,9 @@
                data-ad-slot="5120476027"
                data-ad-format="auto"
                data-full-width-responsive="true"></ins>
-          <script>
-            (adsbygoogle = window.adsbygoogle || []).push({});
-          </script>
+          <!-- No inline <script> here: it lives inside Vue's #app template and
+               would be stripped (with a warning). The mounted() hook below calls
+               adsbygoogle.push({}) for this unit once the template has rendered. -->
         </div>
 
         <!-- Error -->
@@ -510,7 +509,7 @@ const PROXY_BASE = 'https://xdownload.daniel-roy56.workers.dev'
 //   Create an ad unit (Ads → By ad unit → Display ads), copy its slot ID here,
 //   and set the SAME value on the <ins data-ad-slot="…"> above. Until then the
 //   placeholder '1111111111' keeps the unit dormant so dev/preview stays clean.
-const ADSENSE_SLOT = '1111111111'
+const ADSENSE_SLOT = '5120476027'
 // ─────────────────────────────────────────────────────────────────────────────
 
 createApp({
