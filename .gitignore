@@ -1,5 +1,7 @@
 .idea
-.claude
+.claude/*
+# …but do track project skills (shared team tooling), not their install artifacts.
+!.claude/skills/
 
 # node / jest test harness (dev-only; the app ships dependency-free)
 node_modules

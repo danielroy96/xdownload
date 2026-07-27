@@ -19,31 +19,37 @@ repo-root **`wrangler.jsonc`** (which sets `main` to this script and serves
 
 ## Deploy / update
 
-This repo is connected to Cloudflare via GitHub, so **pushing to `main`
-auto-deploys** (deploy command: `npx wrangler deploy`). To deploy manually from
-the repo root instead:
+**Deploy manually from the repo root** — this is the reliable path:
 
 ```bash
-npm install -g wrangler   # once; needs a recent version for Static Assets
-wrangler login
-wrangler deploy
+npx wrangler deploy       # needs Cloudflare auth; run `npx wrangler login` once
 ```
 
-The Worker is named **`xdownload`**, so deploys update it in place — the URL
-stays `https://xdownload.<your-subdomain>.workers.dev`. Both the static app and
-the proxy script ship together.
+`login` backgrounds and prints an OAuth URL to click. The Worker is named
+**`xdownload`**, so deploys update it in place, and both the static app and the
+proxy script ship together.
+
+> A GitHub↔Cloudflare connection may auto-deploy on push to `main`, but treat
+> that as unreliable — there is no CI config in the repo, so always prefer an
+> explicit `npx wrangler deploy`.
+
+Nothing you edit (including `public/index.html`) changes the live site until
+you redeploy the Worker — the static assets ship with it.
 
 ---
 
 ## Connect the app
 
-`PROXY_BASE` in `public/index.html` is already set to your Worker origin:
+`PROXY_BASE` in `public/index.html` must point at a **live** Worker origin
+(same origin serves both the app and `/proxy`):
 
 ```js
-const PROXY_BASE = 'https://xdownload.daniel-roy56.workers.dev'
+const PROXY_BASE = 'https://xdownload.info'
 ```
 
-If your Worker URL ever changes, update that line (no trailing slash).
+If it ever points at a dead origin (e.g. an old `*.workers.dev` subdomain that
+now 404s with error 1042), **all downloads and playback silently break** — this
+is the first thing to check. Keep it as the live origin, no trailing slash.
 
 ---
 
