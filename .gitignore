@@ -1,5 +1,7 @@
 .idea
-.claude
+.claude/*
+# …but do track project skills (shared team tooling), not their install artifacts.
+!.claude/skills/
 
 # wrangler files
 .wrangler
