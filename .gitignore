@@ -6,6 +6,8 @@
 # node / jest test harness (dev-only; the app ships dependency-free)
 node_modules
 coverage
+# generated JUnit report (CI regenerates it each run to publish the test report)
+reports
 
 # wrangler files
 .wrangler

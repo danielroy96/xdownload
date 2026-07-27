@@ -13,4 +13,12 @@ module.exports = {
   testMatch: ['**/tests/**/*.test.js'],
   collectCoverageFrom: ['worker/worker.js', 'public/index.html'],
   clearMocks: true,
+  // Reporters: keep Jest's normal console output ('default'), and also emit a
+  // JUnit XML report. CI consumes reports/junit.xml two ways — dorny/test-reporter
+  // turns it into a per-test Check run, and a small script renders it into the
+  // Actions run summary. See .github/workflows/ci.yml.
+  reporters: [
+    'default',
+    ['jest-junit', { outputDirectory: 'reports', outputName: 'junit.xml' }],
+  ],
 }

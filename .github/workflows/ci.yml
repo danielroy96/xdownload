@@ -16,6 +16,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# checks:write lets dorny/test-reporter publish the per-test report as a Check
+# run on the commit/PR; the defaults stay read-only.
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   test:
     name: test
@@ -33,5 +39,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Jest writes reports/junit.xml (see jest.config.js). `npm test` exits
+      # non-zero on failure so the job still goes red — but the two steps below
+      # run with `if: ${{ !cancelled() }}` so the report is published either way.
       - name: Run tests
         run: npm test
+
+      # Detailed, per-test report as a Check run — visible next to the "test"
+      # status check on the commit and in the PR's Checks tab.
+      - name: Publish test report (Checks)
+        uses: dorny/test-reporter@v2
+        if: ${{ !cancelled() }}
+        with:
+          name: Jest test report
+          path: reports/junit.xml
+          reporter: jest-junit
+
+      # Same data rendered onto the Actions run's own summary page.
+      - name: Write test report (run summary)
+        if: ${{ !cancelled() }}
+        run: node scripts/junit-to-summary.js
