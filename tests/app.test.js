@@ -9,6 +9,13 @@
  */
 const { loadApp, makeInstance } = require('./helpers/loadApp')
 
+// An AbortError as fetch would throw when the request times out / is aborted.
+function abortError() {
+  const e = new Error('The operation was aborted')
+  e.name = 'AbortError'
+  return e
+}
+
 describe('module constants', () => {
   test('PROXY_BASE points at a live https Worker origin (not workers.dev)', () => {
     const { PROXY_BASE } = loadApp()
@@ -221,7 +228,7 @@ describe('fetchVideos (fxtwitter integration)', () => {
     })
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
-    expect(global.fetch).toHaveBeenCalledWith('https://api.fxtwitter.com/jack/status/20')
+    expect(global.fetch.mock.calls[0][0]).toBe('https://api.fxtwitter.com/jack/status/20')
     expect(ctx.videos).toHaveLength(1)
     expect(ctx.error).toBeNull()
     expect(ctx.toasts.some((t) => /1 video found/.test(t.message))).toBe(true)
@@ -259,6 +266,113 @@ describe('fetchVideos (fxtwitter integration)', () => {
     const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
     await ctx.fetchVideos()
     expect(ctx.error).toMatch(/Network error/)
+  })
+})
+
+describe('clearInput', () => {
+  test('resets url, tweet, videos and error back to the empty state', () => {
+    const { ctx } = makeInstance({
+      url: 'https://x.com/jack/status/20',
+      tweet: { id: '20' },
+      videos: [{}, {}],
+      error: 'boom',
+    })
+    ctx.clearInput()
+    expect(ctx.url).toBe('')
+    expect(ctx.tweet).toBeNull()
+    expect(ctx.videos).toEqual([])
+    expect(ctx.error).toBeNull()
+  })
+})
+
+describe('fetchVideos — hardening', () => {
+  test('a non-JSON (HTML) response yields a friendly service error, not a SyntaxError', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => { throw new SyntaxError('Unexpected token < in JSON') },
+    })
+    const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
+    await ctx.fetchVideos()
+    expect(ctx.error).toMatch(/unexpected response/i)
+    expect(ctx.error).not.toMatch(/SyntaxError|token/)
+    expect(ctx.loading).toBe(false)
+  })
+
+  test('a timeout / abort yields a timeout message', async () => {
+    global.fetch = jest.fn().mockRejectedValue(abortError())
+    const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
+    await ctx.fetchVideos()
+    expect(ctx.error).toMatch(/timed out/i)
+    expect(ctx.loading).toBe(false)
+  })
+
+  test('passes an AbortSignal to fetch so the request can be timed out', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 200, tweet: { media: { videos: [] } } }) })
+    const { ctx } = makeInstance({ url: 'https://x.com/jack/status/20' })
+    await ctx.fetchVideos()
+    const init = global.fetch.mock.calls[0][1]
+    expect(init.signal).toBeDefined()
+  })
+})
+
+describe('pasteAndFetch', () => {
+  function stubClipboard(impl) {
+    Object.defineProperty(global.navigator, 'clipboard', {
+      value: { readText: impl },
+      configurable: true,
+    })
+  }
+
+  test('reads a URL from the clipboard, sets it, and fetches', async () => {
+    stubClipboard(async () => 'https://x.com/jack/status/20')
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ code: 200, tweet: { media: { videos: [{ url: 'https://video.twimg.com/a.mp4' }] } } }),
+    })
+    const { ctx } = makeInstance()
+    await ctx.pasteAndFetch()
+    expect(ctx.url).toBe('https://x.com/jack/status/20')
+    expect(global.fetch).toHaveBeenCalled()
+    expect(ctx.videos).toHaveLength(1)
+  })
+
+  test('empty clipboard warns and does not fetch', async () => {
+    stubClipboard(async () => '   ')
+    global.fetch = jest.fn()
+    const { ctx } = makeInstance()
+    await ctx.pasteAndFetch()
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(ctx.toasts.some((t) => /empty/i.test(t.message))).toBe(true)
+  })
+
+  test('blocked clipboard (throws) warns and does not fetch', async () => {
+    stubClipboard(async () => { throw new Error('denied') })
+    global.fetch = jest.fn()
+    const { ctx } = makeInstance()
+    await ctx.pasteAndFetch()
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(ctx.toasts.some((t) => /clipboard/i.test(t.message))).toBe(true)
+  })
+})
+
+describe('mounted() cookie notice', () => {
+  function runMounted(overrides = {}) {
+    const { options } = loadApp()
+    const ctx = { ...options.data(), $nextTick: (fn) => fn && fn(), ...overrides }
+    options.mounted.call(ctx)
+    return ctx
+  }
+
+  test('shows the notice when it has never been acknowledged', () => {
+    localStorage.clear()
+    const ctx = runMounted()
+    expect(ctx.showCookieNotice).toBe(true)
+  })
+
+  test('hides the notice once acknowledgement is stored', () => {
+    localStorage.setItem('cookieNoticeAck', '1')
+    const ctx = runMounted()
+    expect(ctx.showCookieNotice).toBe(false)
   })
 })
 
@@ -348,6 +462,23 @@ describe('downloadVideo (fallback chain)', () => {
     expect(global.fetch).toHaveBeenCalledTimes(6)
     expect(clickSpy).toHaveBeenCalled() // manual-save anchor
     expect(ctx.downloadingIdx).toBeNull()
+    clickSpy.mockRestore()
+  })
+
+  test('with no Worker configured, the chain drops to 5 attempts (direct + 4 proxies)', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, blob: async () => ({}) })
+    const clickSpy = jest
+      .spyOn(window.HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    const { ctx } = makeInstance({
+      proxyBase: '',
+      tweet: { author: { screen_name: 'jack' } },
+      videos: [{}],
+      saveBlob: jest.fn(),
+    })
+    await ctx.downloadVideo({ id: '20', url: 'https://video.twimg.com/x.mp4' }, 0)
+    expect(global.fetch).toHaveBeenCalledTimes(5)
+    expect(clickSpy).toHaveBeenCalled()
     clickSpy.mockRestore()
   })
 })

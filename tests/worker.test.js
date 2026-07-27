@@ -213,6 +213,38 @@ describe('/proxy — successful streaming', () => {
   })
 })
 
+describe('/proxy — edge caching', () => {
+  test('full GET (no Range) marks the 200 immutable + cacheable', async () => {
+    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('bytes', { status: 200 }))
+    const { env } = makeEnv()
+    const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=86400, immutable')
+    // asks Cloudflare to cache the upstream response
+    expect(spy.mock.calls[0][1].cf).toMatchObject({ cacheEverything: true })
+    spy.mockRestore()
+  })
+
+  test('Range request is NOT cached (partial body must not be stored)', async () => {
+    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('partial', { status: 206 }))
+    const { env } = makeEnv()
+    const res = await worker.fetch(
+      req(`/proxy?url=${encodeURIComponent(TWIMG)}`, { headers: { Range: 'bytes=0-99' } }),
+      env
+    )
+    expect(res.headers.get('Cache-Control')).toBeNull()
+    expect(spy.mock.calls[0][1].cf).toBeUndefined()
+    spy.mockRestore()
+  })
+
+  test('non-200 upstream is not marked cacheable', async () => {
+    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('nope', { status: 403 }))
+    const { env } = makeEnv()
+    const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
+    expect(res.headers.get('Cache-Control')).toBeNull()
+    spy.mockRestore()
+  })
+})
+
 describe('/proxy — upstream failure', () => {
   test('network error → 502 with detail', async () => {
     const spy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNRESET'))

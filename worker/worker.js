@@ -79,15 +79,31 @@ async function handleProxy(request, reqUrl) {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
   )
 
+  // twimg media is immutable per URL, so let Cloudflare cache full responses at
+  // the edge — this cuts repeat upstream fetches (and bandwidth) on the free
+  // plan. Range requests (seeking) are left uncached: they return partial (206)
+  // bodies we don't want stored and re-served as if they were the whole file.
+  const cacheable = request.method === 'GET' && !range
+
   let upstream
   try {
-    upstream = await fetch(t.toString(), { method: request.method, headers: fwd })
+    upstream = await fetch(t.toString(), {
+      method: request.method,
+      headers: fwd,
+      // `cf` is honoured only on the Cloudflare runtime; harmless elsewhere.
+      cf: cacheable ? { cacheEverything: true, cacheTtl: 86400 } : undefined,
+    })
   } catch (e) {
     return json({ error: 'upstream fetch failed', detail: String(e) }, 502)
   }
 
   const headers = new Headers(upstream.headers)
   for (const [k, v] of Object.entries(CORS)) headers.set(k, v)
+
+  // Let browsers cache the immutable media too (24h) — only for full 200s.
+  if (cacheable && upstream.status === 200) {
+    headers.set('Cache-Control', 'public, max-age=86400, immutable')
+  }
 
   const dl = reqUrl.searchParams.get('dl')
   if (dl) headers.set('Content-Disposition', `attachment; filename="${safeName(dl)}"`)
