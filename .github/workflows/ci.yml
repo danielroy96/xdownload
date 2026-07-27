@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   test:
-    name: test
+    name: Run Jest Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,16 +42,16 @@ jobs:
       # Jest writes reports/junit.xml (see jest.config.js). `npm test` exits
       # non-zero on failure so the job still goes red — but the two steps below
       # run with `if: ${{ !cancelled() }}` so the report is published either way.
-      - name: Run tests
+      - name: Run Tests
         run: npm test
 
       # Detailed, per-test report as a Check run — visible next to the "test"
       # status check on the commit and in the PR's Checks tab.
-      - name: Publish test report (Checks)
+      - name: Publish Jest Test Report (Checks)
         uses: dorny/test-reporter@v3
         if: ${{ !cancelled() }}
         with:
-          name: Jest test report
+          name: Jest Test Report
           path: reports/junit.xml
           reporter: jest-junit
           # v2 defaults this to true, which routes the report onto the Actions
@@ -67,6 +67,6 @@ jobs:
           list-tests: failed
 
       # Same data rendered onto the Actions run's own summary page.
-      - name: Write test report (run summary)
+      - name: Write Test Report (Run Summary)
         if: ${{ !cancelled() }}
         run: node scripts/junit-to-summary.js
