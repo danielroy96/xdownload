@@ -48,7 +48,7 @@ jobs:
       # Detailed, per-test report as a Check run — visible next to the "test"
       # status check on the commit and in the PR's Checks tab.
       - name: Publish test report (Checks)
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         if: ${{ !cancelled() }}
         with:
           name: Jest test report
