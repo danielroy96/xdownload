@@ -1,0 +1,6 @@
+# On-demand Playwright install + run artifacts — never commit these.
+node_modules/
+package.json
+package-lock.json
+test-results/
+playwright-report/
