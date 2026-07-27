@@ -54,6 +54,11 @@ jobs:
           name: Jest test report
           path: reports/junit.xml
           reporter: jest-junit
+          # v2 defaults this to true, which routes the report onto the Actions
+          # run summary (where our own step already renders it) and skips the
+          # standalone Check run. Force false so we get a real "Jest test report"
+          # Check on the commit/PR — the surface we actually want here.
+          use-actions-summary: false
 
       # Same data rendered onto the Actions run's own summary page.
       - name: Write test report (run summary)
