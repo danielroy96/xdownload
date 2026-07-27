@@ -16,34 +16,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Shared cross-page identity (palette, base type, navbar, logo, footer). -->
+  <link href="/brand.css" rel="stylesheet">
   <style>
-    /* Brand palette — kept in sync with index.html. */
-    :root {
-      --brand: #6d5efc;
-      --brand-hover: #5a4be0;
-      --brand-2: #00c2a8;
-      --header-grad: linear-gradient(140deg, #1e1b3a 0%, #4c3fd6 55%, #6d5efc 100%);
-      --ink: #17142a;
-      --border: #e7e3f5;
-      --muted: #6b6684;
-      --surface: #f6f4fd;
-    }
-    * { box-sizing: border-box; }
-    body {
-      background: var(--surface);
-      font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      color: var(--ink);
-      min-height: 100vh;
-    }
-    .brand-navbar { background: var(--header-grad); border-bottom: none; padding: 0.75rem 0; }
-    .brand-logo { display: block; }
-    .brand-wordmark { font-weight: 800; letter-spacing: -0.3px; font-size: 1.12rem; }
-    .brand-wordmark .accent {
-      background: linear-gradient(90deg, #b9b2ff, #7ff0dd);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
+    /* Page-specific styling for the policy content only. */
     .policy { max-width: 720px; }
     .policy h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.5px; }
     .policy h2 { font-size: 1.1rem; font-weight: 700; margin-top: 2rem; }
@@ -51,14 +27,6 @@
     .policy a { color: var(--brand); text-decoration: none; }
     .policy a:hover { text-decoration: underline; }
     .updated { font-size: 0.82rem; color: var(--muted); }
-    .site-footer {
-      border-top: 1px solid var(--border);
-      padding: 1.25rem 0;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    .site-footer a { color: var(--muted); text-decoration: none; }
-    .site-footer a:hover { color: var(--brand); text-decoration: underline; }
   </style>
 </head>
 <body>

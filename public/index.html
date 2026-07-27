@@ -160,53 +160,12 @@
   <!-- Plus Jakarta Sans — our brand typeface. A rounded, modern geometric sans
        that deliberately steps away from X's system-font look. -->
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Shared cross-page identity (palette, base type, navbar, logo, footer).
+       Page-specific styling stays in the inline <style> below. -->
+  <link href="/brand.css" rel="stylesheet">
   <style>
-    /* ─────────────────────────────────────────────────────────────────────────
-       Brand palette. Deliberately NOT X's blue-on-black: our own identity is an
-       indigo-violet primary warming into a teal accent, on soft off-white
-       surfaces with near-black violet-tinted ink. Reuse these vars everywhere;
-       don't reintroduce X's #1d9bf0 / #000.
-    ────────────────────────────────────────────────────────────────────────── */
-    :root {
-      --brand: #6d5efc;            /* indigo-violet — primary accent */
-      --brand-hover: #5a4be0;      /* darker press/hover state */
-      --brand-2: #00c2a8;          /* teal — secondary accent (GIF, gradient) */
-      --brand-grad: linear-gradient(135deg, #6d5efc 0%, #00c2a8 100%);
-      --header-grad: linear-gradient(140deg, #1e1b3a 0%, #4c3fd6 55%, #6d5efc 100%);
-      --ink: #17142a;              /* near-black text, faintly violet */
-      --border: #e7e3f5;           /* soft lavender-grey hairlines */
-      --muted: #6b6684;            /* muted violet-grey */
-      --surface: #f6f4fd;          /* page background */
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      background: var(--surface);
-      color: var(--ink);
-      font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      min-height: 100vh;
-    }
-
-    /* ── Navbar ── */
-    .brand-navbar {
-      background: var(--header-grad);
-      border-bottom: none;
-      padding: 0.75rem 0;
-    }
-
-    .brand-logo { display: block; }
-    .brand-wordmark {
-      font-weight: 800;
-      letter-spacing: -0.3px;
-      font-size: 1.12rem;
-    }
-    .brand-wordmark .accent {
-      background: linear-gradient(90deg, #b9b2ff, #7ff0dd);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
+    /* Palette, base type, navbar, logo/wordmark and footer live in brand.css
+       (shared with privacy.html). Everything below is specific to this page. */
 
     /* ── Page layout ── */
     .page-header {
@@ -411,16 +370,6 @@
     .info-features { list-style: none; padding-left: 0; }
     .info-features i { color: var(--brand); }
     .info-faq h3 { color: var(--ink); }
-
-    /* ── Footer ── */
-    .site-footer {
-      border-top: 1px solid var(--border);
-      padding: 1.25rem 0;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    .site-footer a { color: var(--muted); text-decoration: none; }
-    .site-footer a:hover { color: var(--brand); text-decoration: underline; }
 
     /* ── Cookie notice (small, discreet, dismissible) ── */
     .cookie-notice {
