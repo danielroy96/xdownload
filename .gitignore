@@ -1,6 +1,10 @@
 .idea
 .claude
 
+# node / jest test harness (dev-only; the app ships dependency-free)
+node_modules
+coverage
+
 # wrangler files
 .wrangler
 .dev.vars*
