@@ -40,6 +40,11 @@ function attr(tag, name) {
   return m ? unescape(m[1]) : '';
 }
 
+// Escape for use inside the <sub> HTML we emit for the scenario lines.
+function htmlEscape(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 if (!fs.existsSync(XML_PATH)) {
   console.error(`No ${XML_PATH} found — did \`npm test\` run and emit the JUnit report?`);
   process.exit(0); // don't fail the job just because the summary is missing
@@ -63,9 +68,10 @@ for (const m of xml.matchAll(/<testcase\b([^>]*)>([\s\S]*?)<\/testcase>/g)) {
   const feature = attr(open, 'classname') || '(ungrouped)';
   const failed = /<(failure|error)\b/.test(m[2]);
 
-  if (!groups.has(feature)) groups.set(feature, { total: 0, failed: 0 });
+  if (!groups.has(feature)) groups.set(feature, { total: 0, failed: 0, scenarios: [] });
   const g = groups.get(feature);
   g.total += 1;
+  g.scenarios.push({ name: attr(open, 'name'), failed });
   if (failed) {
     g.failed += 1;
     const msg = (m[2].match(/<(?:failure|error)[^>]*>([\s\S]*?)<\/(?:failure|error)>/) || [])[1] || '';
@@ -79,6 +85,15 @@ const rows = [...groups.entries()].map(([feature, g]) => {
   return `| ${ok ? '✅' : '❌'} | ${feature} | ${g.total} | ${g.total - g.failed} | ${g.failed} |`;
 });
 
+// Per-feature scenario breakdown: every test name with a pass/fail emoji, in
+// <sub> (small text) with ` · ` separators so it stays compact.
+const scenarioSections = [...groups.entries()].map(([feature, g]) => {
+  const line = g.scenarios
+    .map((s) => `${s.failed ? '❌' : '✅'} ${htmlEscape(s.name)}`)
+    .join(' · ');
+  return `**${feature}**<br><sub>${line}</sub>`;
+});
+
 const status = failures + errors === 0 ? '✅ All tests passed' : `❌ ${failures + errors} test(s) failed`;
 
 const md = [
@@ -89,7 +104,11 @@ const md = [
   '| | Feature | Tests | Passed | Failed |',
   '| :-: | --- | --: | --: | --: |',
   ...rows,
-  ...(failing.length ? ['', '### Failures', '', ...failing] : []),
+  '',
+  '### Scenarios',
+  '',
+  ...scenarioSections.flatMap((s) => [s, '']),
+  ...(failing.length ? ['### Failures', '', ...failing] : []),
   '',
 ].join('\n');
 
