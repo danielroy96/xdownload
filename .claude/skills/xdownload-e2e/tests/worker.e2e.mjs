@@ -135,12 +135,16 @@ test('proxy: POST → 405 method not allowed', async () => {
 // ── /proxy contract: CORS preflight ──────────────────────────────────────
 // The browser sends a Range header on <video>, which triggers a preflight.
 
-test('proxy: OPTIONS preflight advertises CORS + allowed methods', async () => {
+test('proxy: OPTIONS preflight advertises CORS + allowed methods/headers', async () => {
   const res = await fetchT(`${BASE}/proxy`, { method: 'OPTIONS' })
   assert.ok(res.status === 200 || res.status === 204)
   assert.equal(res.headers.get('access-control-allow-origin'), '*')
   assert.match(res.headers.get('access-control-allow-methods') || '', /GET/)
-  assert.match(res.headers.get('access-control-allow-headers') || '', /Range/)
+  const allowHeaders = res.headers.get('access-control-allow-headers') || ''
+  assert.match(allowHeaders, /Range/)
+  // The download path sends the Turnstile token as a cf-turnstile-response
+  // header; a cross-origin download preflight must be told it's allowed.
+  assert.match(allowHeaders, /cf-turnstile-response/i)
 })
 
 // ── /proxy contract: real video (the part that makes downloads work) ────────
@@ -166,14 +170,33 @@ test('proxy: honours Range so <video> can seek (206 + Content-Range)', async () 
   assert.equal(res.headers.get('content-length'), '1024')
 })
 
-test('proxy: &dl= forces an attachment download with a safe filename', async () => {
+// ── /proxy contract: Turnstile download gate ────────────────────────────────
+// Downloads (requests with &dl=) are gated on a Cloudflare Turnstile token,
+// verified server-side via siteverify against env.TURNSTILE_SECRET. The gate
+// FAILS CLOSED: a download request carrying no token (as any bot / raw curl
+// would send) is rejected before any upstream fetch. Playback (no &dl=) is NOT
+// gated — that's still covered by the streaming/Range/caching tests above.
+//
+// We can only assert the closed-door behavior from outside: minting a REAL
+// token needs the browser widget (see the browser layer), and confirming the
+// prod secret is bound needs a valid token or `wrangler secret list`. The
+// safe-filename shaping that runs AFTER the gate passes is covered by the unit
+// suite (tests/worker.test.js), which mocks siteverify.
+test('proxy: &dl= download without a Turnstile token is rejected (403, fails closed)', async () => {
   assert.ok(liveVideoUrl, 'could not discover a live video URL from fxtwitter')
   const url = `${BASE}/proxy?url=${encodeURIComponent(liveVideoUrl)}&dl=my%20clip.mp4`
   const res = await fetchT(url, { method: 'HEAD' })
-  assert.equal(res.status, 200)
-  const cd = res.headers.get('content-disposition') || ''
-  assert.match(cd, /attachment/)
-  assert.match(cd, /filename="my clip\.mp4"/)
+  assert.equal(res.status, 403)
+})
+
+test('proxy: &dl= download with a bogus Turnstile token is rejected (403)', async () => {
+  assert.ok(liveVideoUrl, 'could not discover a live video URL from fxtwitter')
+  const url = `${BASE}/proxy?url=${encodeURIComponent(liveVideoUrl)}&dl=my%20clip.mp4`
+  const res = await fetchT(url, { headers: { 'cf-turnstile-response': 'obviously-not-valid' } })
+  assert.equal(res.status, 403)
+  // json() fully drains the (small) error body — no separate cancel needed.
+  const body = await res.json()
+  assert.match(body.error, /turnstile/i)
 })
 
 // ── /proxy contract: edge caching ──────────────────────────────────────────
