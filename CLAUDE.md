@@ -78,6 +78,8 @@ change Worker behavior — match the existing describe/scenario style.
 - Verify live health: `curl https://xdownload.info/proxy` → `400
   {"error":"missing ?url parameter"}` means it's up. `/proxy?url=<non-twimg>` →
   `403 host not allowed`.
+- To complete the deployment, you must successfully verify that all of your
+  changes satisfy the tests in the `xdownload-e2e` skill
 
 ## Key gotcha: PROXY_BASE
 
