@@ -29,7 +29,11 @@ const ALLOWED_HOSTS = new Set([
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-  'Access-Control-Allow-Headers': 'Range, Content-Type',
+  // `cf-turnstile-response` is a non-simple header, so a cross-origin download
+  // (e.g. the app on localhost hitting the live Worker) triggers a preflight;
+  // it must be allow-listed here or the browser drops the token before it
+  // reaches us. Same-origin production traffic skips the preflight entirely.
+  'Access-Control-Allow-Headers': 'Range, Content-Type, cf-turnstile-response',
   'Access-Control-Expose-Headers':
     'Content-Length, Content-Range, Accept-Ranges, Content-Type, Content-Disposition',
   'Access-Control-Max-Age': '86400',
@@ -47,7 +51,36 @@ function safeName(name) {
   return (name || 'video.mp4').replace(/[^\w.\- ]+/g, '_').slice(0, 120)
 }
 
-async function handleProxy(request, reqUrl) {
+// Verify a Cloudflare Turnstile token server-side (the ONLY place the secret is
+// ever seen — never the browser). Downloads carry the token the widget minted;
+// we confirm it with Cloudflare before spending bandwidth on the fetch below.
+//
+// Canonical siteverify contract:
+//   POST https://challenges.cloudflare.com/turnstile/v0/siteverify
+//   body: { secret, response: <token>, remoteip: <client ip> }
+// and only `success === true` counts as a pass. We FAIL CLOSED — any network
+// error, non-2xx, non-JSON body, or missing secret is treated as "not human".
+async function verifyTurnstile(token, ip, env) {
+  if (!token || !env || !env.TURNSTILE_SECRET) return false
+  try {
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        secret: env.TURNSTILE_SECRET,
+        response: token,
+        remoteip: ip || '',
+      }),
+    })
+    if (!r.ok) return false
+    const data = await r.json()
+    return data.success === true
+  } catch {
+    return false
+  }
+}
+
+async function handleProxy(request, reqUrl, env) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { headers: CORS })
   }
@@ -66,6 +99,26 @@ async function handleProxy(request, reqUrl) {
   }
   if (t.protocol !== 'https:' || !ALLOWED_HOSTS.has(t.hostname)) {
     return json({ error: 'host not allowed' }, 403)
+  }
+
+  // Turnstile gate — DOWNLOADS ONLY. A forced-download request carries `dl`
+  // (the save-as filename); those come from a user clicking "Download" in the
+  // app, which attaches the human-verification token the widget minted. We gate
+  // that action on a passing siteverify before touching upstream.
+  //
+  // Playback (no `dl`) is deliberately NOT gated: the <video> element makes
+  // range/seek requests directly and can't attach a token, and Turnstile tokens
+  // are single-use anyway — gating playback would break streaming. The token
+  // rides in a request header (kept out of the URL / access logs); we also
+  // accept it as a query param as a belt-and-braces fallback.
+  const dl = reqUrl.searchParams.get('dl')
+  if (dl) {
+    const token =
+      request.headers.get('cf-turnstile-response') ||
+      reqUrl.searchParams.get('cf-turnstile-response')
+    const ip = request.headers.get('CF-Connecting-IP')
+    const human = await verifyTurnstile(token, ip, env)
+    if (!human) return json({ error: 'turnstile verification failed' }, 403)
   }
 
   // Forward Range (so the <video> player can seek) and spoof a Referer that
@@ -105,7 +158,7 @@ async function handleProxy(request, reqUrl) {
     headers.set('Cache-Control', 'public, max-age=86400, immutable')
   }
 
-  const dl = reqUrl.searchParams.get('dl')
+  // `dl` was read (and gated) above; reuse it to force the save-as download.
   if (dl) headers.set('Content-Disposition', `attachment; filename="${safeName(dl)}"`)
 
   return new Response(upstream.body, {
@@ -118,7 +171,7 @@ async function handleProxy(request, reqUrl) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
-    if (url.pathname === '/proxy') return handleProxy(request, url)
+    if (url.pathname === '/proxy') return handleProxy(request, url, env)
     // Not the proxy route — serve the static app (index.html, etc.).
     return env.ASSETS.fetch(request)
   },

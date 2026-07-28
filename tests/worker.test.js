@@ -12,13 +12,14 @@
 const worker = require('../worker/worker.js').default
 
 // A minimal ASSETS binding: records the request it was handed and returns a
-// recognisable static response.
+// recognisable static response. TURNSTILE_SECRET is present so the download
+// gate (which reads env.TURNSTILE_SECRET) behaves as it does in production.
 function makeEnv() {
   const assetsFetch = jest.fn(async (req) => new Response('<html>app</html>', {
     status: 200,
     headers: { 'Content-Type': 'text/html' },
   }))
-  return { env: { ASSETS: { fetch: assetsFetch } }, assetsFetch }
+  return { env: { ASSETS: { fetch: assetsFetch }, TURNSTILE_SECRET: 'test-secret' }, assetsFetch }
 }
 
 // Build a Request for the Worker. `path` may include a query string.
@@ -27,6 +28,37 @@ function req(path, init) {
 }
 
 const TWIMG = 'https://video.twimg.com/ext_tw_video/1/pu/vid/720x1280/abc.mp4'
+const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+
+// Mock global.fetch so the Worker's two possible outbound calls are told apart:
+// the Turnstile siteverify POST (download gate) and the upstream twimg fetch.
+//   siteverify: an object → returned as the JSON verdict (e.g. { success: true });
+//               'throw'   → the fetch rejects (network failure);
+//               'non-2xx' → returns HTTP 500 (siteverify unreachable/broken).
+//   upstream:   the Response used for the twimg fetch (defaults to 200 video).
+// Returns the jest spy so callers can assert on the calls.
+function mockFetch({ siteverify = { success: true }, upstream } = {}) {
+  return jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    if (String(url).includes('/turnstile/v0/siteverify')) {
+      if (siteverify === 'throw') throw new Error('siteverify down')
+      if (siteverify === 'non-2xx') return new Response('err', { status: 500 })
+      return new Response(JSON.stringify(siteverify), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    return upstream || new Response('bytes', {
+      status: 200,
+      headers: { 'Content-Type': 'video/mp4' },
+    })
+  })
+}
+
+// A download request for TWIMG carrying a Turnstile token (header, as the app sends it).
+function downloadReq(token = 'GOOD-TOKEN', filename = 'my/../evil name.mp4') {
+  const headers = token ? { 'cf-turnstile-response': token } : {}
+  return req(`/proxy?url=${encodeURIComponent(TWIMG)}&dl=${encodeURIComponent(filename)}`, { headers })
+}
 
 describe('Serving the app', () => {
   test('serves the homepage', async () => {
@@ -185,13 +217,11 @@ describe('Proxy — streaming video to the browser', () => {
     spy.mockRestore()
   })
 
-  test('forces a download with a safe filename when &dl is set', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('bytes', { status: 200 }))
+  test('forces a download with a safe filename when &dl is set (valid token)', async () => {
+    // Downloads are gated on Turnstile now, so supply a token + passing verdict.
+    const spy = mockFetch({ siteverify: { success: true } })
     const { env } = makeEnv()
-    const res = await worker.fetch(
-      req(`/proxy?url=${encodeURIComponent(TWIMG)}&dl=${encodeURIComponent('my/../evil name.mp4')}`),
-      env
-    )
+    const res = await worker.fetch(downloadReq(), env)
     const cd = res.headers.get('Content-Disposition')
     expect(cd).toMatch(/^attachment; filename="/)
     // Path separators and other unsafe chars are collapsed to underscores.
@@ -209,6 +239,87 @@ describe('Proxy — streaming video to the browser', () => {
     )
     expect(res.status).toBe(200)
     expect(spy.mock.calls[0][1].method).toBe('HEAD')
+    spy.mockRestore()
+  })
+})
+
+describe('Proxy — Turnstile download gate', () => {
+  test('a valid token is verified via canonical siteverify, then the file is served', async () => {
+    const spy = mockFetch({ siteverify: { success: true } })
+    const { env } = makeEnv()
+    const res = await worker.fetch(downloadReq('GOOD-TOKEN'), env)
+    expect(res.status).toBe(200)
+
+    // First outbound call is siteverify with the canonical form-encoded body.
+    const [svUrl, svInit] = spy.mock.calls[0]
+    expect(svUrl).toBe(SITEVERIFY)
+    expect(svInit.method).toBe('POST')
+    const body = new URLSearchParams(svInit.body)
+    expect(body.get('secret')).toBe('test-secret')     // from env.TURNSTILE_SECRET
+    expect(body.get('response')).toBe('GOOD-TOKEN')     // the token from the request
+    // Second call is the upstream twimg fetch (only reached because it passed).
+    expect(spy.mock.calls[1][0]).toBe(TWIMG)
+    spy.mockRestore()
+  })
+
+  test('passes the client IP (CF-Connecting-IP) as remoteip', async () => {
+    const spy = mockFetch({ siteverify: { success: true } })
+    const { env } = makeEnv()
+    const r = req(`/proxy?url=${encodeURIComponent(TWIMG)}&dl=v.mp4`, {
+      headers: { 'cf-turnstile-response': 'GOOD-TOKEN', 'CF-Connecting-IP': '203.0.113.7' },
+    })
+    await worker.fetch(r, env)
+    const body = new URLSearchParams(spy.mock.calls[0][1].body)
+    expect(body.get('remoteip')).toBe('203.0.113.7')
+    spy.mockRestore()
+  })
+
+  test('rejects a download with no token (403) without calling upstream', async () => {
+    const spy = mockFetch({ siteverify: { success: true } })
+    const { env } = makeEnv()
+    const res = await worker.fetch(downloadReq(null), env)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'turnstile verification failed' })
+    // Fail fast: no token means siteverify and upstream are never called.
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  test('rejects a download when siteverify says success:false (403)', async () => {
+    const spy = mockFetch({ siteverify: { success: false, 'error-codes': ['invalid-input-response'] } })
+    const { env } = makeEnv()
+    const res = await worker.fetch(downloadReq('BAD-TOKEN'), env)
+    expect(res.status).toBe(403)
+    // siteverify was consulted, but upstream was never reached.
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0]).toBe(SITEVERIFY)
+    spy.mockRestore()
+  })
+
+  test('fails closed (403) when siteverify itself errors', async () => {
+    const spy = mockFetch({ siteverify: 'throw' })
+    const { env } = makeEnv()
+    const res = await worker.fetch(downloadReq('GOOD-TOKEN'), env)
+    expect(res.status).toBe(403)
+    spy.mockRestore()
+  })
+
+  test('fails closed (403) when siteverify returns a non-2xx', async () => {
+    const spy = mockFetch({ siteverify: 'non-2xx' })
+    const { env } = makeEnv()
+    const res = await worker.fetch(downloadReq('GOOD-TOKEN'), env)
+    expect(res.status).toBe(403)
+    spy.mockRestore()
+  })
+
+  test('playback (no &dl) is never gated — siteverify is not called', async () => {
+    const spy = mockFetch({ siteverify: { success: true } })
+    const { env } = makeEnv()
+    const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
+    expect(res.status).toBe(200)
+    // Exactly one outbound call — the upstream fetch — and it's NOT siteverify.
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0]).toBe(TWIMG)
     spy.mockRestore()
   })
 })

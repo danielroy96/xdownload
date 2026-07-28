@@ -26,17 +26,24 @@ Live at **https://xdownload.info**.
 ## Layout
 
 - `public/index.html` — the entire app: a single-file **Vue 3** app (global
-  build, no bundler) styled with **Bootstrap 5.3.3**, all via CDN. ~790 lines,
+  build, no bundler) styled with **Bootstrap 5.3.3**, all via CDN. ~1100 lines,
   markup + `<style>` + inline `<script>`. This is where nearly all app work
   happens.
+- `public/brand.css` — shared cross-page identity (palette, base type, navbar,
+  logo, footer), linked by both `index.html` and `privacy.html`.
 - `public/privacy.html` — static privacy/cookies page.
+- `public/robots.txt`, `public/sitemap.xml` — crawl directives.
 - `worker/worker.js` — the Worker: `/proxy` handler + static-asset fallthrough.
 - `wrangler.jsonc` — Worker config (name `xdownload`, `main`, ASSETS binding,
   `xdownload.info` custom-domain route).
+- `tests/` — the Jest suite (`worker.test.js`, `app.test.js`). See Testing.
 - `.claude/launch.json` — local dev server (see below).
 
-There is **no build step, no `package.json`, no dependencies to install.**
-Everything is vanilla JS/HTML served as-is. Wrangler is the only tool.
+The **shipped app** has no build step and no runtime dependencies — it's
+vanilla JS/HTML/CSS served as-is (Vue + Bootstrap via CDN). The `package.json`,
+`babel.config.js`, `jest.config.js` and `node_modules/` at the repo root exist
+**only for the Jest test harness and CI** — they never ship in the Worker's
+static assets. Don't add a bundler or move the app to npm dependencies.
 
 ## Running & verifying locally
 
@@ -46,6 +53,17 @@ serves the static app. The `/proxy` endpoint does **not** exist locally (it's
 Worker-only) — but `PROXY_BASE` points at the live `https://xdownload.info`,
 whose proxy sends `ACAO: *`, so downloads/playback still work from local
 testing.
+
+## Testing
+
+Run the unit suite with **`npm test`** (Jest, jsdom + node environments). It
+covers the Worker's `/proxy` contract (host allow-list, CORS/preflight, Range
+forwarding, forced download, the Turnstile download gate, edge caching, upstream
+failure) and the single-file app's logic (`tests/app.test.js` loads the inline
+`<script>` out of `index.html`). CI (`.github/workflows/ci.yml`) runs it on every
+push and PR; **`main` has branch protection requiring the "Run Jest Tests" check
+to pass**, so a PR won't merge until the suite is green. Add/adjust tests when you
+change Worker behavior — match the existing describe/scenario style.
 
 ## Deploying — IMPORTANT
 
@@ -63,7 +81,7 @@ testing.
 
 ## Key gotcha: PROXY_BASE
 
-`const PROXY_BASE` in `public/index.html` (~line 503) must point at a **live**
+`const PROXY_BASE` in `public/index.html` (~line 771) must point at a **live**
 Worker origin (currently `https://xdownload.info`). It was once hardcoded to a
 `*.workers.dev` subdomain that later 404'd (Cloudflare error 1042), silently
 breaking all downloads/playback. If downloads suddenly fail everywhere, check
@@ -84,11 +102,15 @@ playlist.
 - **Match the existing comment style.** Both `worker.js` and `index.html` are
   heavily, deliberately commented — explaining *why* (CORS, hot-link 403s,
   fallback ordering), not just *what*. Keep that density when editing.
-- **Visual style is X/Twitter:** black nav/header (`#000`), blue accent
-  (`--x-blue: #1d9bf0`), pill buttons (`.btn-x`), rounded cards. Reuse the CSS
-  vars in `:root`; don't introduce a new palette.
-- Keep the app **single-file and dependency-free** (CDN only). Don't add a
-  bundler/`package.json` unless explicitly asked.
+- **Visual style is xDownload's own brand** (deliberately rebranded *away* from
+  X — no X logo/palette). The identity lives in `public/brand.css` `:root`:
+  indigo-violet accent (`--brand: #6d5efc`), teal secondary (`--brand-2:
+  #00c2a8`), gradient buttons (`.btn-brand`), rounded cards, Plus Jakarta Sans.
+  Reuse those CSS vars; don't reintroduce the old X black/blue look or a new
+  palette.
+- Keep the **shipped app single-file and dependency-free** (CDN only). The
+  root `package.json` is for the Jest harness only (see Testing) — don't add a
+  bundler or ship npm dependencies in `public/`.
 - Any `<script>` you add to the app must live **outside** Vue's `#app` root —
   Vue strips inline scripts inside its template (this is why AdSense is
   activated from the `mounted()` hook, not an inline `<script>`).
@@ -103,3 +125,12 @@ playlist.
   messages in `fetchVideos()`.
 - A discreet, dismissible cookie notice (localStorage `cookieNoticeAck`) and the
   privacy page exist for AdSense compliance.
+- **Cloudflare Turnstile** gates video **downloads** (bot protection). The
+  `cf-turnstile` widget (site key in `index.html`) mints a token that
+  `downloadVideo()` sends to `/proxy` as a `cf-turnstile-response` header; the
+  Worker verifies it via `challenges.cloudflare.com/turnstile/v0/siteverify`
+  using **`env.TURNSTILE_SECRET`** and only serves download requests (`dl=`) on
+  `success === true`, failing closed. Playback (`/proxy` without `dl=`) is
+  deliberately **not** gated (a `<video>` can't carry a single-use token across
+  range/seek). Set the secret with `npx wrangler secret put TURNSTILE_SECRET`
+  before deploying, or Worker-proxy downloads 403.
