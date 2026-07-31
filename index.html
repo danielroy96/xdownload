@@ -10,9 +10,32 @@
   <!-- Explicit crawl directive. max-image-preview:large lets Google show a full-size
        thumbnail in results; there's nothing here we want to hide from indexing. -->
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
-  <meta name="theme-color" content="#4c3fd6">
-  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#4c3fd6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#131120" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://xdownload.info/">
+
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       Dark-mode: resolve the theme BEFORE first paint to avoid a flash of the
+       wrong palette. Reads the same persisted 'theme' preference the Vue app
+       writes ('auto' | 'light' | 'dark'; 'auto' = follow the OS) and stamps the
+       result onto <html> as data-theme (drives brand.css) + data-bs-theme
+       (drives Bootstrap components). The app keeps both attributes in sync
+       thereafter. Inline + early so it applies before any CSS paints; it lives
+       outside #app so Vue leaves it untouched. Fails safe to the light default.
+  ────────────────────────────────────────────────────────────────────────── -->
+  <script>
+    (function () {
+      try {
+        var pref = (localStorage.getItem('theme') || 'auto').replace(/^"|"$/g, '');
+        var dark = pref === 'dark' || (pref !== 'light' &&
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var t = dark ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.setAttribute('data-bs-theme', t);
+      } catch (e) { /* storage/matchMedia blocked — keep the light default */ }
+    })();
+  </script>
 
   <!-- Resource hints: warm up the TLS/DNS to the CDNs and the fxtwitter API we hit
        on first fetch. Faster paint / lower LCP is a real ranking signal. -->
@@ -186,6 +209,12 @@
     }
     #boot-fallback h1 { font-size: 1.15rem; margin: 0 0 .5rem; }
     #boot-fallback a { color: #4c3fd6; }
+    /* Keep the boot-failure card legible in dark mode (set by the inline
+       resolver above, before any bundled CSS loads). */
+    :root[data-theme="dark"] #boot-fallback {
+      background: #1c1930; color: #e9e6f7; border-color: #2c2842;
+    }
+    :root[data-theme="dark"] #boot-fallback a { color: #a99dff; }
   </style>
 
 </head>
@@ -209,6 +238,19 @@
         <path d="M9 22h14" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
       </svg>
       <span class="brand-wordmark text-white">x<span class="accent">Download</span></span>
+
+      <!-- Dark-mode toggle. A plain <button> (no inline <script>), so it's safe
+           inside Vue's #app root. Manually toggling overrides the OS setting;
+           the icon reflects the action (moon = "switch to dark"). -->
+      <button
+        type="button"
+        class="btn btn-theme ms-auto"
+        @click="toggleTheme"
+        :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+        :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+      >
+        <i class="bi" :class="isDark ? 'bi-sun-fill' : 'bi-moon-stars-fill'"></i>
+      </button>
     </div>
   </nav>
 

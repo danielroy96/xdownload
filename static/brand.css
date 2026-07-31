@@ -8,6 +8,15 @@
    indigo-violet primary warming into a teal accent, on soft off-white surfaces
    with near-black violet-tinted ink. Reuse these vars; don't reintroduce X's
    #1d9bf0 / #000.
+
+   Dark mode: the SAME semantic vars are re-declared for dark below, so every
+   consumer that already uses them (here + page.css + privacy.html) flips
+   automatically — no per-selector dark rules needed. The resolved theme is
+   expressed as `data-theme` on <html>: the Vue app (src/app.js) sets it from a
+   persisted 'theme' preference ('auto' | 'light' | 'dark'), and an early inline
+   script in each page's <head> sets it before first paint to avoid a flash.
+   The `prefers-color-scheme` fallback below means dark still works with JS off /
+   before the app boots (e.g. the static privacy page, the boot fallback).
 ════════════════════════════════════════════════════════════════════════════ */
 :root {
   --brand: #6d5efc;            /* indigo-violet — primary accent */
@@ -16,9 +25,48 @@
   --brand-grad: linear-gradient(135deg, #6d5efc 0%, #00c2a8 100%);
   --header-grad: linear-gradient(140deg, #1e1b3a 0%, #4c3fd6 55%, #6d5efc 100%);
   --ink: #17142a;              /* near-black text, faintly violet */
+  --ink-soft: #4a4563;         /* secondary body text (paragraphs, list items) */
   --border: #e7e3f5;           /* soft lavender-grey hairlines */
   --muted: #6b6684;            /* muted violet-grey */
   --surface: #f6f4fd;          /* page background */
+  --surface-card: #ffffff;     /* cards, inputs, elevated panels */
+  --code-bg: #efeafc;          /* inline <code> background */
+}
+
+/* ── Dark palette ──────────────────────────────────────────────────────────
+   Two entry points to the SAME token overrides:
+     1. `prefers-color-scheme: dark` — the no-JS / pre-boot fallback. Scoped to
+        `:not([data-theme="light"])` so a visitor who has manually forced LIGHT
+        (data-theme="light") is never dragged dark by their OS.
+     2. `:root[data-theme="dark"]` — the explicit choice the app/inline-script
+        sets. Comes last so a manual DARK choice wins on a light OS too.
+   Accents are nudged brighter for legibility on the deep surface; the gradient
+   buttons and dark header gradient already read well on dark, so they stay. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand: #8b7dff;
+    --brand-hover: #a99dff;
+    --brand-2: #1fd4ba;
+    --ink: #e9e6f7;
+    --ink-soft: #b8b3d4;
+    --border: #2c2842;
+    --muted: #9d98bb;
+    --surface: #131120;
+    --surface-card: #1c1930;
+    --code-bg: #272142;
+  }
+}
+:root[data-theme="dark"] {
+  --brand: #8b7dff;
+  --brand-hover: #a99dff;
+  --brand-2: #1fd4ba;
+  --ink: #e9e6f7;
+  --ink-soft: #b8b3d4;
+  --border: #2c2842;
+  --muted: #9d98bb;
+  --surface: #131120;
+  --surface-card: #1c1930;
+  --code-bg: #272142;
 }
 
 * { box-sizing: border-box; }
@@ -50,6 +98,28 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* ── Theme toggle (dark/light) ──
+   Sits at the right end of the navbar. The navbar keeps its dark header
+   gradient in BOTH themes, so a translucent-white pill reads correctly on
+   light AND dark — no theming of the button itself required. */
+.btn-theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  font-size: 1.05rem;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-theme:hover { background: rgba(255, 255, 255, 0.20); color: #fff; }
+.btn-theme:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ── Footer ── */
 .site-footer {

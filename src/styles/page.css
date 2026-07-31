@@ -35,6 +35,7 @@
       margin-top: -2.5rem;
       border-radius: 18px;
       border: none;
+      background: var(--surface-card);
       box-shadow: 0 12px 40px rgba(76,63,214,.16);
     }
 
@@ -52,7 +53,7 @@
     }
 
     .url-input-group .input-group-text {
-      background: #fff;
+      background: var(--surface-card);
       border-left: none;
       border-color: var(--border);
       padding-left: 0;
@@ -82,7 +83,7 @@
     .result-card {
       border-radius: 16px;
       border: 1px solid var(--border);
-      background: #fff;
+      background: var(--surface-card);
       overflow: hidden;
     }
 
@@ -194,9 +195,9 @@
       font-weight: 700;
       margin: 1.1rem 0 0.35rem;
     }
-    .info-section p { font-size: 0.92rem; color: #4a4563; margin-bottom: 0.75rem; }
+    .info-section p { font-size: 0.92rem; color: var(--ink-soft); margin-bottom: 0.75rem; }
     .info-section code {
-      background: #efeafc;
+      background: var(--code-bg);
       color: var(--brand-hover);
       padding: 0.05rem 0.35rem;
       border-radius: 5px;
@@ -205,7 +206,7 @@
     .info-steps, .info-features { padding-left: 1.1rem; }
     .info-steps li, .info-features li {
       font-size: 0.92rem;
-      color: #4a4563;
+      color: var(--ink-soft);
       margin-bottom: 0.55rem;
     }
     .info-features { list-style: none; padding-left: 0; }

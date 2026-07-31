@@ -6,7 +6,8 @@
 //     regex/vm-extracting the inline script.
 // The DOM template still lives in index.html and is compiled at runtime by the
 // esm-bundler Vue build (see vite.config.js alias). Mounting happens in main.js.
-import { useLocalStorage } from '@vueuse/core'
+import { computed, watch } from 'vue'
+import { useLocalStorage, usePreferredDark } from '@vueuse/core'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +41,35 @@ export const appOptions = {
   // string convention so visitors who already accepted aren't re-prompted.
   setup() {
     const cookieNoticeAck = useLocalStorage('cookieNoticeAck', '')
-    return { cookieNoticeAck }
+
+    // ── Dark mode ────────────────────────────────────────────────────────────
+    // `theme` is the persisted preference: 'auto' follows the OS and live-updates
+    // when the OS setting changes; 'light'/'dark' are explicit manual overrides
+    // that stick until the user toggles again (independent of the OS). Default
+    // 'auto' so a first-time visitor automatically matches their system theme.
+    const theme = useLocalStorage('theme', 'auto')
+    // Reactive mirror of the OS `prefers-color-scheme: dark` media query (VueUse
+    // degrades to `false` where matchMedia is unavailable — e.g. jsdom/tests).
+    const systemDark = usePreferredDark()
+    // The RESOLVED theme actually shown: the manual choice when set, else the OS.
+    const isDark = computed(() =>
+      theme.value === 'auto' ? systemDark.value : theme.value === 'dark'
+    )
+
+    // Reflect the resolved theme onto <html data-theme> so the swapped brand.css
+    // vars apply to the WHOLE document (navbar, footer, boot fallback), not just
+    // inside Vue's #app root. `immediate` reconciles with whatever the early
+    // inline <head> script set on first paint. We deliberately don't touch
+    // Bootstrap's own `data-bs-theme` here — that's also set by the inline script
+    // and kept in sync from index.html's mounted-side, keeping this logic pure
+    // and unit-testable (no Bootstrap assumptions).
+    watch(isDark, (dark) => {
+      const el = document.documentElement
+      el.setAttribute('data-theme', dark ? 'dark' : 'light')
+      el.setAttribute('data-bs-theme', dark ? 'dark' : 'light')
+    }, { immediate: true })
+
+    return { cookieNoticeAck, theme, systemDark, isDark }
   },
 
   data() {
@@ -90,6 +119,16 @@ export const appOptions = {
     // the showCookieNotice computed flips to false reactively.
     acceptCookies() {
       this.cookieNoticeAck = '1'
+    },
+
+    // ── Theme toggle ──────────────────────────────────────────────────────────
+    // A manual toggle overrides the OS setting: persist the OPPOSITE of what's
+    // currently showing. From then on the app shows that explicit choice
+    // regardless of the OS, until the user toggles again — i.e. dark mode can be
+    // driven independently of the system theme. (The isDark watcher in setup()
+    // applies it to <html> and useLocalStorage persists it.)
+    toggleTheme() {
+      this.theme = this.isDark ? 'light' : 'dark'
     },
 
     // ── URL parsing ──────────────────────────────────────────────────────────

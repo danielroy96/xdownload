@@ -410,6 +410,48 @@ describe('Accepting the cookie notice', () => {
   })
 })
 
+describe('Dark mode (system-aware, manually overridable)', () => {
+  // The theme preference is read at setup() time, so seed storage BEFORE
+  // makeInstance(). jsdom has no matchMedia, so usePreferredDark() resolves to
+  // false — i.e. the "system" is light in these tests, which lets us prove a
+  // manual dark override wins independently of the OS.
+  test('defaults to auto and follows the (light) system on a first visit', () => {
+    window.localStorage.clear()
+    const { ctx } = makeInstance()
+    expect(ctx.theme).toBe('auto')
+    expect(ctx.isDark).toBe(false)
+  })
+
+  test('an explicit stored preference overrides the system setting', () => {
+    window.localStorage.clear()
+    window.localStorage.setItem('theme', 'dark')
+    const { ctx } = makeInstance()
+    // System is light (no matchMedia), yet the manual choice makes it dark.
+    expect(ctx.isDark).toBe(true)
+  })
+
+  test('toggling from light persists an explicit dark choice', async () => {
+    window.localStorage.clear()
+    const { ctx } = makeInstance()
+    expect(ctx.isDark).toBe(false)
+    ctx.toggleTheme()
+    expect(ctx.theme).toBe('dark')
+    expect(ctx.isDark).toBe(true)
+    await nextTick()
+    expect(window.localStorage.getItem('theme')).toBe('dark')
+  })
+
+  test('toggling again flips back to an explicit light choice', () => {
+    window.localStorage.clear()
+    window.localStorage.setItem('theme', 'dark')
+    const { ctx } = makeInstance()
+    expect(ctx.isDark).toBe(true)
+    ctx.toggleTheme()
+    expect(ctx.theme).toBe('light')
+    expect(ctx.isDark).toBe(false)
+  })
+})
+
 describe('Toast notifications', () => {
   test('appears then disappears on its own after 4s', () => {
     vi.useFakeTimers()
