@@ -164,10 +164,13 @@
       display: block;
       margin: 0 auto 1.5rem;
       max-width: 728px;
-      min-height: 90px;
       text-align: center;
     }
-    .ad-slot ins { display: block; }
+    /* The Adsterra banner is injected as a fixed-size <iframe> into #ad-banner by
+       initAds(), which scales it down (CSS transform) to fit narrow viewports and
+       sets this element's height to match. overflow:hidden guards against any
+       sub-pixel spill; the height is managed inline by initAds()'s fit(). */
+    #ad-banner { display: block; overflow: hidden; }
     .ad-label {
       font-size: 0.65rem;
       letter-spacing: 0.08em;

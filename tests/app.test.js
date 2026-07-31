@@ -13,7 +13,10 @@
  * @vitest-environment jsdom
  */
 import { nextTick } from 'vue'
-import { appOptions as options, PROXY_BASE, ADSENSE_SLOT } from '../src/app.js'
+import {
+  appOptions as options, PROXY_BASE,
+  ADSTERRA_KEY, ADS_ENABLED, ADSTERRA_MOBILE_KEY, MOBILE_ADS_ENABLED,
+} from '../src/app.js'
 import { makeInstance } from './helpers/makeInstance.js'
 
 // ── Mocking helpers ───────────────────────────────────────────────────────────
@@ -62,9 +65,48 @@ describe('Configuration guards', () => {
     expect(PROXY_BASE).not.toMatch(/\/$/) // no trailing slash
   })
 
-  test('uses the real AdSense ad slot, not the dormant placeholder', () => {
-    expect(ADSENSE_SLOT).toBe('5120476027')
-    expect(ADSENSE_SLOT.startsWith('1111')).toBe(false)
+  test('Adsterra ads stay dormant until a real hex zone key replaces the placeholder', () => {
+    // ADS_ENABLED gates both the ad-slot markup (showAds v-if) and the banner
+    // injection in mounted(). It must be false while the key is the placeholder
+    // (so dev/preview and the current pre-approval build show no empty ad box),
+    // and it only flips true for a real Adsterra key (a lowercase-hex zone id).
+    if (ADSTERRA_KEY === 'PLACEHOLDER') {
+      expect(ADS_ENABLED).toBe(false)
+    } else {
+      expect(ADSTERRA_KEY).toMatch(/^[a-f0-9]+$/i)
+      expect(ADS_ENABLED).toBe(true)
+    }
+    // showAds mirrors ADS_ENABLED exactly.
+    const d = options.computed.showAds.call({})
+    expect(d).toBe(ADS_ENABLED)
+  })
+
+  test('the optional mobile Adsterra zone is either a real hex key or the placeholder', () => {
+    // MOBILE_ADS_ENABLED gates the viewport swap to the narrow mobile banner; a
+    // placeholder key leaves it off (the desktop zone is scaled down instead).
+    if (ADSTERRA_MOBILE_KEY === 'PLACEHOLDER') {
+      expect(MOBILE_ADS_ENABLED).toBe(false)
+    } else {
+      expect(ADSTERRA_MOBILE_KEY).toMatch(/^[a-f0-9]+$/i)
+      expect(MOBILE_ADS_ENABLED).toBe(true)
+    }
+  })
+
+  test('activeAdZone picks the mobile zone on narrow viewports, the leaderboard otherwise', () => {
+    // Only meaningful when a mobile zone is configured; otherwise it always
+    // returns the desktop zone regardless of width.
+    const { ctx } = makeInstance()
+    const orig = window.innerWidth
+    try {
+      Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true })
+      const narrow = ctx.activeAdZone()
+      Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true })
+      const wide = ctx.activeAdZone()
+      expect(wide.key).toBe(ADSTERRA_KEY)
+      expect(narrow.key).toBe(MOBILE_ADS_ENABLED ? ADSTERRA_MOBILE_KEY : ADSTERRA_KEY)
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: orig, configurable: true })
+    }
   })
 })
 
