@@ -46,7 +46,7 @@ nothing.
 
 ## Layout
 
-- `index.html` — the Vite entry: `<head>` (meta/SEO/AdSense/Turnstile/Bootstrap),
+- `index.html` — the Vite entry: `<head>` (meta/SEO/Turnstile/Bootstrap),
   the in-DOM Vue template inside `<div id="app" v-cloak>`, a hidden
   `#boot-fallback` + `<noscript>`, and one `<script type="module" src="/src/main.js">`.
 - `src/app.js` — the Vue app **options object** (`setup`/`data`/`computed`/
@@ -60,7 +60,7 @@ nothing.
 - `static/` — Vite `publicDir`: copied verbatim to `dist/` root. Holds
   `brand.css` (shared identity, also linked by `privacy.html`), `robots.txt`,
   `sitemap.xml`, `ads.txt`. Their canonical URLs (`/brand.css`, `/ads.txt`) must
-  stay stable — AdSense & SEO depend on them, so they are NOT hashed.
+  stay stable — the ad network (ads.txt) & SEO depend on them, so they are NOT hashed.
 - `privacy.html` — static privacy/cookies page (a second Vite input; no JS).
 - `dist/` — **build output** the Worker serves (gitignored).
 - `worker/worker.js` — the Worker: `/health` + `/proxy` handlers + static-asset
@@ -183,21 +183,41 @@ playlist.
   build exists specifically to avoid a third-party CDN SPOF. Add npm deps as
   needed, but don't move the core framework back to a runtime CDN `<script>`.
 - Any executable inline `<script>` must live **outside** Vue's `#app` root — Vue
-  strips inline scripts inside its template (this is why AdSense is activated
-  from the `mounted()` hook, and the module entry / boot fallback sit after
+  strips inline scripts inside its template (this is why the Adsterra banner is
+  injected from the `mounted()` hook, and the module entry / boot fallback sit after
   `</div>`). The `application/ld+json` block is data, not executable, so it's
   fine in `<head>`.
 
 ## Monetization / third parties
 
-- **Google AdSense**: client `ca-pub-3160807008877535`, ad slot `5120476027`
-  (set in both the `<ins>` tag in `index.html` and the `ADSENSE_SLOT` const in
-  `src/app.js`). The `mounted()` hook skips `adsbygoogle.push({})` while the slot
-  is the `1111…` placeholder to keep dev/preview clean.
+- **Ads: Adsterra (display banner only).** AdSense was dropped — Google rejected
+  the site under "Google-served ads on screens without publisher content" (the
+  standard rejection for downloader/utility tools). Adsterra accepts this
+  category with no traffic minimum. Config is the `ADSTERRA_*` consts in
+  `src/app.js`. Two fixed-size zones are served and swapped by viewport: the
+  desktop leaderboard (`ADSTERRA_KEY`/`_WIDTH`/`_HEIGHT`, 728×90) and a narrow
+  mobile banner (`ADSTERRA_MOBILE_*`, 160×300) used at/below `ADSTERRA_MOBILE_MAX`
+  px (`initAds()`→`activeAdZone()` picks, `injectAdZone()` renders, and it
+  re-injects when the viewport crosses the breakpoint). `ADS_ENABLED` is true only
+  once a real hex zone key replaces the `'PLACEHOLDER'` sentinel; `MOBILE_ADS_ENABLED`
+  gates the mobile zone (placeholder → the desktop zone is scaled down instead).
+  Adsterra's banner is two `<script>`s ending in `document.write`, which can't go
+  in the page directly (Vue strips inline `<script>` inside `#app`, and
+  `document.write` after load wipes the document) — so `initAds()` (called from
+  `mounted()`) injects them into a sandboxed `<iframe>` it creates in
+  `#ad-banner`, where `document.write` targets the iframe's own document. Only the
+  plain display banner is used — **no popunders / interstitials / social-bar**
+  (keeps the clean brand UX). `showAds` (v-if on the slot) + `ADS_ENABLED` keep
+  the slot hidden entirely while the key is the placeholder, so dev/preview and
+  the pre-approval build show no empty ad box. To go live: create an Adsterra
+  Banner unit sized `ADSTERRA_WIDTH×ADSTERRA_HEIGHT` (default 300×250), paste its
+  key into `ADSTERRA_KEY`, paste Adsterra's ads.txt block into `static/ads.txt`,
+  then rebuild+deploy.
 - fxtwitter API is unauthenticated and free; error codes are mapped to friendly
   messages in `fetchVideos()`.
 - A discreet, dismissible cookie notice (persisted via VueUse `useLocalStorage`
-  under key `cookieNoticeAck`) and the privacy page exist for AdSense compliance.
+  under key `cookieNoticeAck`) and the privacy page exist for ad-network/privacy
+  compliance.
 - **Cloudflare Turnstile** gates video **downloads** (bot protection). The
   `cf-turnstile` widget (site key in `index.html`) mints a token that
   `downloadVideo()` sends to `/proxy` as a `cf-turnstile-response` header; the

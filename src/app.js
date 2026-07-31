@@ -24,12 +24,41 @@ export const PROXY_BASE = window.location.origin
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GOOGLE ADSENSE
-//   ADSENSE_SLOT : the ad-unit slot ID from your AdSense dashboard.
-//   Create an ad unit (Ads → By ad unit → Display ads), copy its slot ID here,
-//   and set the SAME value on the <ins data-ad-slot="…"> above. Until then the
-//   placeholder '1111111111' keeps the unit dormant so dev/preview stays clean.
-export const ADSENSE_SLOT = '5120476027'
+// ADSTERRA DISPLAY BANNER
+//
+// We monetize with Adsterra, not AdSense: Google rejected the site under
+// "Google-served ads on screens without publisher content" — the boilerplate
+// rejection for downloader/utility tools — whereas Adsterra accepts this
+// category with no traffic minimum. We use ONLY the plain display-banner format
+// (no popunders / interstitials / social-bar), so the clean UX is preserved.
+//
+// We run TWO fixed-size Adsterra banner zones and swap by viewport, because
+// Adsterra display banners are a single fixed size each:
+//   • ADSTERRA_* — the desktop/tablet leaderboard (728×90).
+//   • ADSTERRA_MOBILE_* — a narrow mobile banner (160×300) used at/below
+//     ADSTERRA_MOBILE_MAX px, so phones get a properly-shaped ad instead of a
+//     leaderboard scaled down to a sliver. Leave the mobile KEY as 'PLACEHOLDER'
+//     to instead just scale the desktop banner down to fit on mobile.
+//
+// To add/replace a zone: create a "Banner" ad unit of the matching size in the
+// Adsterra dashboard and copy its KEY (the hex id in its invoke.js URL) here.
+// Then paste Adsterra's ads.txt block into static/ads.txt and rebuild+deploy.
+//
+// While ADSTERRA_KEY is the 'PLACEHOLDER' sentinel the whole slot is dormant, so
+// it's hidden entirely in dev/preview (no empty/broken box locally).
+export const ADSTERRA_KEY = 'c06d8a7a6c98d8c14a13857706174fdd'
+export const ADSTERRA_WIDTH = 728
+export const ADSTERRA_HEIGHT = 90
+export const ADSTERRA_MOBILE_KEY = 'ecd5e91f5a9e64cc8059e468cef34eca'
+export const ADSTERRA_MOBILE_WIDTH = 160
+export const ADSTERRA_MOBILE_HEIGHT = 300
+// Viewport width (px) at/below which the mobile zone is used, when it's configured.
+export const ADSTERRA_MOBILE_MAX = 599
+// True once a real key is set — gates both the slot markup (v-if) and injection.
+export const ADS_ENABLED = ADSTERRA_KEY !== 'PLACEHOLDER' && /^[a-f0-9]+$/i.test(ADSTERRA_KEY)
+// Whether the dedicated mobile zone is configured (else we scale the desktop one).
+export const MOBILE_ADS_ENABLED =
+  ADSTERRA_MOBILE_KEY !== 'PLACEHOLDER' && /^[a-f0-9]+$/i.test(ADSTERRA_MOBILE_KEY)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const appOptions = {
@@ -92,28 +121,105 @@ export const appOptions = {
     // reloads without a mounted() hook reading storage.
     showCookieNotice() {
       return this.cookieNoticeAck !== '1'
+    },
+
+    // Gate the ad slot's markup: only render it once a real Adsterra key is set.
+    // Keeps dev/preview (and any future no-ads build) from showing an empty box.
+    showAds() {
+      return ADS_ENABLED
     }
   },
 
-  // ── AdSense init ────────────────────────────────────────────────────────────
-  // The <ins> ad unit lives inside this Vue root, so we activate it after the
-  // template has rendered. `push({})` tells AdSense to fill the slot. We skip it
-  // while ADSENSE_SLOT is still the placeholder so dev/preview doesn't hit
-  // AdSense with an invalid slot (which logs console errors).
+  // ── Adsterra banner init ─────────────────────────────────────────────────────
+  // The ad slot lives inside this Vue root, so we inject the banner after the
+  // template has rendered. Skipped entirely while the key is the placeholder.
   mounted() {
-    if (ADSENSE_SLOT.startsWith('1111')) return
-    this.$nextTick(() => {
-      document.querySelectorAll('ins.adsbygoogle').forEach(() => {
-        try {
-          (window.adsbygoogle = window.adsbygoogle || []).push({})
-        } catch (e) {
-          /* AdSense not loaded (blocked / offline) — ignore */
-        }
-      })
-    })
+    if (!ADS_ENABLED) return
+    this.$nextTick(() => this.initAds())
   },
 
   methods: {
+    // ── Adsterra banner ───────────────────────────────────────────────────────
+    // We serve two fixed-size zones and swap by viewport (see the ADSTERRA_*
+    // consts): a desktop leaderboard and a narrow mobile banner. This picks the
+    // right zone for the current width, injects it, and re-injects when the
+    // viewport crosses the breakpoint (a different zone = a different Adsterra
+    // key, so it must be re-fetched, not just resized).
+    activeAdZone() {
+      return (MOBILE_ADS_ENABLED && window.innerWidth <= ADSTERRA_MOBILE_MAX)
+        ? { key: ADSTERRA_MOBILE_KEY, width: ADSTERRA_MOBILE_WIDTH, height: ADSTERRA_MOBILE_HEIGHT }
+        : { key: ADSTERRA_KEY, width: ADSTERRA_WIDTH, height: ADSTERRA_HEIGHT }
+    },
+
+    // Inject one Adsterra zone into #ad-banner. Adsterra's banner is two
+    // <script>s that end in a document.write() of the ad iframe. We can't drop
+    // those into the page directly: Vue strips inline <script> inside #app, and
+    // document.write() after load wipes the whole document. So we create our OWN
+    // empty <iframe>, then write the Adsterra snippet into ITS document —
+    // document.write there targets the iframe's fresh (same-origin about:blank)
+    // document, sandboxing the ad and its writes away from our page.
+    // replaceChildren() makes it idempotent (clears any prior zone's iframe).
+    injectAdZone(host, zone) {
+      const iframe = document.createElement('iframe')
+      iframe.width = zone.width
+      iframe.height = zone.height
+      iframe.scrolling = 'no'
+      iframe.setAttribute('title', 'Advertisement')
+      // margin:auto centers a zone narrower than the slot; transform-origin
+      // top-left makes the scale-to-fit below fill the width for a wider one.
+      iframe.style.cssText = 'border:0;display:block;margin:0 auto;transform-origin:top left;'
+      host.replaceChildren(iframe)
+      // The iframe must be in the DOM before we touch its contentWindow.
+      const doc = iframe.contentWindow.document
+      doc.open()
+      doc.write(
+        '<body style="margin:0">' +
+        '<script type="text/javascript">atOptions=' + JSON.stringify({
+          key: zone.key,
+          format: 'iframe',
+          height: zone.height,
+          width: zone.width,
+          params: {}
+        }) + ';<\/script>' +
+        '<script type="text/javascript" src="https://www.highperformanceformat.com/' +
+        zone.key + '/invoke.js"><\/script>' +
+        '</body>'
+      )
+      doc.close()
+      // Adsterra banners are a FIXED size, so a zone can still be wider than the
+      // slot (e.g. a 728 leaderboard on a small tablet). Rather than clip the ad's
+      // call-to-action, scale the whole thing down to fit the slot width (and back
+      // to 1:1 when it fits). transform doesn't change layout, so we set the host's
+      // height to the *scaled* height to avoid leftover whitespace.
+      return () => {
+        const avail = host.clientWidth || zone.width
+        const scale = Math.min(1, avail / zone.width)
+        iframe.style.transform = scale < 1 ? 'scale(' + scale + ')' : ''
+        host.style.height = (zone.height * scale) + 'px'
+      }
+    },
+
+    initAds() {
+      const host = this.$refs.adBanner
+      if (!host) return
+      let currentKey = null
+      let fit = null
+      const render = () => {
+        const zone = this.activeAdZone()
+        if (zone.key === currentKey) { if (fit) fit(); return } // same zone → refit only
+        currentKey = zone.key
+        try {
+          fit = this.injectAdZone(host, zone)
+          fit()
+        } catch (e) {
+          /* Ad blocked / iframe unavailable — fail silently, never break the app. */
+          fit = null
+        }
+      }
+      render()
+      window.addEventListener('resize', render)
+    },
+
     // ── Cookie notice ─────────────────────────────────────────────────────────
     // Persist the acknowledgement; the VueUse ref writes it to localStorage and
     // the showCookieNotice computed flips to false reactively.

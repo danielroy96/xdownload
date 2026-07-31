@@ -1,1 +1,10 @@
-google.com, pub-3160807008877535, DIRECT, f08c47fec0942fa0
+# Authorized Digital Sellers (IAB ads.txt) for xdownload.info
+#
+# We monetize with Adsterra (display banner only) — AdSense was dropped after
+# Google rejected the site under "ads on screens without publisher content".
+#
+# TODO before/right after Adsterra approval: replace this comment block with the
+# ads.txt lines Adsterra provides in the dashboard (Websites → your site →
+# ads.txt). Adsterra ships a multi-line block authorizing its partner SSPs; paste
+# it verbatim. This file is served verbatim at the stable canonical URL /ads.txt
+# (Vite publicDir copies static/ to dist/ root; the file is NOT hashed).

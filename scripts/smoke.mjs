@@ -18,7 +18,7 @@ const checks = [
     status: 403,
     includes: 'host not allowed',
   },
-  { name: 'privacy page (AdSense compliance)', path: '/privacy.html', status: 200 },
+  { name: 'privacy page (ad-network compliance)', path: '/privacy.html', status: 200 },
   { name: 'ads.txt (authorized sellers)', path: '/ads.txt', status: 200 },
 ]
 

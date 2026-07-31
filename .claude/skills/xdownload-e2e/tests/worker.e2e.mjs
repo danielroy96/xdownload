@@ -109,7 +109,7 @@ test('static: GET / serves the built Vue app', async () => {
   assert.doesNotMatch(html, /unpkg\.com/, 'no unpkg CDN dependency')
 })
 
-test('static: GET /privacy.html serves the privacy page (AdSense compliance)', async () => {
+test('static: GET /privacy.html serves the privacy page (ad-network compliance)', async () => {
   const res = await fetchT(`${BASE}/privacy.html`)
   assert.equal(res.status, 200)
   assert.match(res.headers.get('content-type') || '', /text\/html/)
