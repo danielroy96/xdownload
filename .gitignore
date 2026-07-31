@@ -3,9 +3,12 @@
 # …but do track project skills (shared team tooling), not their install artifacts.
 !.claude/skills/
 
-# node / jest test harness (dev-only; the app ships dependency-free)
+# node / build tooling
 node_modules
 coverage
+# Vite build output — the Worker serves this; CI/deploy regenerate it.
+dist
+.vite
 # generated JUnit report (CI regenerates it each run to publish the test report)
 reports
 

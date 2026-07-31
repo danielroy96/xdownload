@@ -9,10 +9,10 @@ fetches the post's media via the public **fxtwitter API**
 (`api.fxtwitter.com`), and offers one-click download + in-page playback of any
 videos/GIFs.
 
-The whole thing is one **Cloudflare Worker** that does two jobs:
+The whole thing is one **Cloudflare Worker** that does three jobs:
 
-1. **Hosts the static app** — `public/` is served via the Static Assets
-   (`ASSETS`) binding. Requests matching a file in `public/` never hit the
+1. **Hosts the app** — the Vite build output in `dist/` is served via the Static
+   Assets (`ASSETS`) binding. Requests matching a built file never hit the
    Worker code.
 2. **Proxies video** — `GET /proxy?url=<twimg url>` fetches the video
    server-side, spoofs a `twitter.com` Referer to beat twimg's hot-link `403`,
@@ -20,76 +20,134 @@ The whole thing is one **Cloudflare Worker** that does two jobs:
    no CORS headers, so this same-origin proxy is what makes downloads and
    seekable playback work. It is **not** an open proxy — locked to
    `video.twimg.com`, `pbs.twimg.com`, `amp.twimg.com`.
+3. **Reports liveness** — `GET /health` → `200 {"status":"ok"}`. A cheap,
+   dependency-free probe (no twimg/fxtwitter) for uptime monitors, so a green
+   `/health` means "the Worker is running" independent of upstream.
 
 Live at **https://xdownload.info**.
 
+## Architecture — a Vite-built Vue app (read this)
+
+The app is a **Vue 3 SPA built with Vite**. Vue (and `@vueuse/core`) are **npm
+dependencies bundled and served from our own origin** — deliberately NOT loaded
+from a third-party CDN. This is the core reliability decision: the app used to
+load Vue from an unpinned `unpkg.com/vue@3` tag, and any unpkg blip or breaking
+release blanked the whole client-rendered site ("site is down"). Bundling Vue
+locally removes that single point of failure. **Do not reintroduce a CDN
+`<script>` for Vue.** (Bootstrap CSS is still CDN-loaded but pinned, and a CSS
+failure only degrades styling, not the app boot.)
+
+The **DOM template still lives in `index.html`** inside `<div id="app">` and is
+compiled at runtime. For that to work, `vite.config.js` aliases `vue` to
+`vue/dist/vue.esm-bundler.js` (the build that ships the template compiler). This
+keeps the large hand-tuned template byte-for-byte — no SFC/render-function
+rewrite. If you change that alias to the runtime-only build, the app renders
+nothing.
+
 ## Layout
 
-- `public/index.html` — the entire app: a single-file **Vue 3** app (global
-  build, no bundler) styled with **Bootstrap 5.3.3**, all via CDN. ~1100 lines,
-  markup + `<style>` + inline `<script>`. This is where nearly all app work
-  happens.
-- `public/brand.css` — shared cross-page identity (palette, base type, navbar,
-  logo, footer), linked by both `index.html` and `privacy.html`.
-- `public/privacy.html` — static privacy/cookies page.
-- `public/robots.txt`, `public/sitemap.xml` — crawl directives.
-- `worker/worker.js` — the Worker: `/proxy` handler + static-asset fallthrough.
-- `wrangler.jsonc` — Worker config (name `xdownload`, `main`, ASSETS binding,
-  `xdownload.info` custom-domain route).
-- `tests/` — the Jest suite (`worker.test.js`, `app.test.js`). See Testing.
+- `index.html` — the Vite entry: `<head>` (meta/SEO/AdSense/Turnstile/Bootstrap),
+  the in-DOM Vue template inside `<div id="app" v-cloak>`, a hidden
+  `#boot-fallback` + `<noscript>`, and one `<script type="module" src="/src/main.js">`.
+- `src/app.js` — the Vue app **options object** (`setup`/`data`/`computed`/
+  `mounted`/`methods`) plus `PROXY_BASE` and `ADSENSE_SLOT`. Exported so tests
+  import it directly. This is where nearly all app logic lives.
+- `src/main.js` — bootstrap: imports Vue + `appOptions` + `page.css`, mounts, and
+  arms the boot fail-safe.
+- `src/boot.js` — boot fail-safe helpers (`revealFallback`, `appMounted`,
+  `startBootWatchdog`). Split out so they're unit-testable without mounting Vue.
+- `src/styles/page.css` — page-specific styles (was the inline `<style>`).
+- `static/` — Vite `publicDir`: copied verbatim to `dist/` root. Holds
+  `brand.css` (shared identity, also linked by `privacy.html`), `robots.txt`,
+  `sitemap.xml`, `ads.txt`. Their canonical URLs (`/brand.css`, `/ads.txt`) must
+  stay stable — AdSense & SEO depend on them, so they are NOT hashed.
+- `privacy.html` — static privacy/cookies page (a second Vite input; no JS).
+- `dist/` — **build output** the Worker serves (gitignored).
+- `worker/worker.js` — the Worker: `/health` + `/proxy` handlers + static-asset
+  fallthrough.
+- `vite.config.js`, `vitest.config.js` — build + test config.
+- `wrangler.jsonc` — Worker config (name `xdownload`, `main`, ASSETS binding →
+  `dist`, a `build.command` that runs `npm run build`, `xdownload.info`
+  custom-domain route).
+- `tests/` — the **Vitest** suite (`worker.test.js`, `app.test.js`,
+  `boot.test.js`, `helpers/makeInstance.js`, `setup.js`). See Testing.
+- `.github/workflows/` — `ci.yml` (build + test on push/PR), `uptime.yml`
+  (scheduled production health check + auto-alert).
+- `scripts/` — `junit-to-summary.cjs` (renders the CI test report),
+  `smoke.mjs` (post-deploy smoke check).
 - `.claude/launch.json` — local dev server (see below).
-
-The **shipped app** has no build step and no runtime dependencies — it's
-vanilla JS/HTML/CSS served as-is (Vue + Bootstrap via CDN). The `package.json`,
-`babel.config.js`, `jest.config.js` and `node_modules/` at the repo root exist
-**only for the Jest test harness and CI** — they never ship in the Worker's
-static assets. Don't add a bundler or move the app to npm dependencies.
 
 ## Running & verifying locally
 
-Use the preview dev server (config `xdownload` in `.claude/launch.json`): it's
-`python3 -m http.server 3456 --directory public`, so `http://localhost:3456`
-serves the static app. The `/proxy` endpoint does **not** exist locally (it's
-Worker-only) — but `PROXY_BASE` points at the live `https://xdownload.info`,
-whose proxy sends `ACAO: *`, so downloads/playback still work from local
-testing.
+`npm install` first. Then the preview dev server (config `xdownload` in
+`.claude/launch.json`) runs **`npm run dev`** (Vite, `http://localhost:5173`).
+For a production-fidelity check use `npm run build && npm run preview` (serves
+`dist/`), or `npx wrangler dev` (builds `dist/`, serves it **and** `/proxy` +
+`/health`).
+
+Note the Vite dev/preview servers don't run the Worker, so `/proxy` and
+`/health` don't exist there — but `PROXY_BASE` is now `window.location.origin`,
+so downloads/playback fall through to the public-proxy fallbacks in dev. Use
+`wrangler dev` when you need the real proxy locally.
 
 ## Testing
 
-Run the unit suite with **`npm test`** (Jest, jsdom + node environments). It
-covers the Worker's `/proxy` contract (host allow-list, CORS/preflight, Range
-forwarding, forced download, the Turnstile download gate, edge caching, upstream
-failure) and the single-file app's logic (`tests/app.test.js` loads the inline
-`<script>` out of `index.html`). CI (`.github/workflows/ci.yml`) runs it on every
-push and PR; **`main` has branch protection requiring the "Run Jest Tests" check
-to pass**, so a PR won't merge until the suite is green. Add/adjust tests when you
-change Worker behavior — match the existing describe/scenario style.
+Run the unit suite with **`npm test`** (Vitest; `vitest run`). Per-file
+environment is chosen with a `// @vitest-environment node|jsdom` docblock.
+Coverage:
+
+- `tests/worker.test.js` (node) — the Worker's `/health` + `/proxy` contract
+  (host allow-list, CORS/preflight, Range forwarding, forced download, the
+  Turnstile download gate, edge caching, upstream failure). Imports `worker.js`
+  directly; mocks `fetch` with `vi.spyOn`.
+- `tests/app.test.js` (jsdom) — the app logic, imported from `src/app.js` via
+  `tests/helpers/makeInstance.js` (which runs `setup()`/`data()`/`computed`/
+  `methods` like Vue). Mocking uses Vitest throughout (`vi.stubGlobal('fetch',…)`,
+  `vi.spyOn`); `vitest.config.js` enables `unstubGlobals`/`restoreMocks`, so
+  tests need no manual teardown.
+- `tests/boot.test.js` (jsdom) — the boot fail-safe / watchdog.
+- `tests/setup.js` — installs an in-memory `localStorage` (Node 26 ships a global
+  `localStorage` that shadows jsdom's and needs a file flag). VueUse's
+  `useLocalStorage` reads `window.localStorage` under the hood.
+
+Keep test names as full human-readable scenarios — `scripts/junit-to-summary.cjs`
+groups the CI report by the top-level `describe` (feature) and lists each test as
+a scenario. CI (`.github/workflows/ci.yml`) runs `npm run build` then `npm test`
+on every push and PR; **`main` has branch protection requiring the "Run Jest
+Tests" check** (the job name is historical/load-bearing — it now runs Vitest;
+don't rename it without updating branch protection). Add/adjust tests when you
+change behavior — match the existing describe/scenario style.
+
+There is also a comprehensive production **E2E skill** (`xdownload-e2e`): a
+zero-dep worker/HTTP layer + a Playwright browser journey that hit the live site.
+Run it after deploying.
 
 ## Deploying — IMPORTANT
 
-- Deploy manually from the repo root: **`npx wrangler deploy`**. Requires
-  Cloudflare auth; if not cached, `npx wrangler login` (backgrounds and prints
-  an OAuth URL to click). Deploys update the `xdownload` Worker in place.
-- **Editing `public/index.html` (or any file) changes nothing on the live site
-  until you redeploy the Worker.** The static assets ship with the Worker.
-- Deploy/commit/push only when the user asks. `worker/README.md` mentions a
-  GitHub→Cloudflare auto-deploy on push to `main`; treat that as unreliable and
-  prefer explicit `wrangler deploy`.
-- Verify live health: `curl https://xdownload.info/proxy` → `400
-  {"error":"missing ?url parameter"}` means it's up. `/proxy?url=<non-twimg>` →
-  `403 host not allowed`.
-- To complete the deployment, you must successfully verify that all of your
-  changes satisfy the tests in the `xdownload-e2e` skill
+- Deploy from the repo root: **`npm run deploy`** (= `vite build` → `wrangler
+  deploy` → `node scripts/smoke.mjs` post-deploy smoke check), or `npx wrangler
+  deploy` directly (its `build.command` runs `npm run build` first). Requires
+  Cloudflare auth; if not cached, `npx wrangler login`.
+- **Editing source changes nothing on the live site until you rebuild + redeploy
+  the Worker.** The Worker serves the built `dist/`.
+- Deploy/commit/push only when the user asks. Treat any GitHub→Cloudflare
+  auto-deploy as unreliable and prefer explicit `npm run deploy`.
+- Verify live health: `curl https://xdownload.info/health` → `{"status":"ok"}`;
+  `curl https://xdownload.info/proxy` → `400 {"error":"missing ?url parameter"}`;
+  `/proxy?url=<non-twimg>` → `403 host not allowed`.
+- To complete a deployment, verify all changes satisfy the tests in the
+  `xdownload-e2e` skill.
 
 ## Key gotcha: PROXY_BASE
 
-`const PROXY_BASE` in `public/index.html` (~line 771) must point at a **live**
-Worker origin (currently `https://xdownload.info`). It was once hardcoded to a
-`*.workers.dev` subdomain that later 404'd (Cloudflare error 1042), silently
-breaking all downloads/playback. If downloads suddenly fail everywhere, check
-this first. Same origin serves both the app and `/proxy`, so keep it that way.
+`PROXY_BASE` in `src/app.js` is now **`window.location.origin`** — derived from
+whatever origin serves the app, so the app and `/proxy` are always same-origin
+and it can never point at a dead absolute host. This replaced a hardcoded
+absolute URL that had silently broken the whole site before (it was once a
+`*.workers.dev` subdomain that 404'd — Cloudflare error 1042). **Keep it
+origin-derived**; don't hardcode an absolute origin back in.
 
-## Download strategy (in index.html)
+## Download strategy (in src/app.js)
 
 `downloadVideo()` tries an ordered chain and stops at the first success:
 own Worker `/proxy` → direct fetch → several public CORS proxies → finally a
@@ -99,34 +157,47 @@ dead proxy or HTML error page can't stall or masquerade as success. Always
 prefer the highest-bitrate progressive **MP4** — never the `.m3u8` HLS
 playlist.
 
+## Reliability / anti-downtime measures
+
+- Vue bundled from our own origin (no CDN SPOF) — see Architecture.
+- `PROXY_BASE` origin-derived — see the gotcha above.
+- Boot fail-safe (`src/boot.js` + `#boot-fallback` + `v-cloak`): a failed mount
+  reveals a static message instead of a blank page.
+- `/health` endpoint + `.github/workflows/uptime.yml`: a scheduled probe every
+  ~15 min that opens/updates a dedup'd GitHub issue on failure (and closes it on
+  recovery).
+- `scripts/smoke.mjs` runs in `npm run deploy` so a bad deploy fails loudly.
+
 ## Conventions & preferences
 
-- **Match the existing comment style.** Both `worker.js` and `index.html` are
-  heavily, deliberately commented — explaining *why* (CORS, hot-link 403s,
-  fallback ordering), not just *what*. Keep that density when editing.
+- **Match the existing comment style.** `worker.js` and `src/*` are heavily,
+  deliberately commented — explaining *why* (CORS, hot-link 403s, fallback
+  ordering, the Vue-bundling decision), not just *what*. Keep that density.
 - **Visual style is xDownload's own brand** (deliberately rebranded *away* from
-  X — no X logo/palette). The identity lives in `public/brand.css` `:root`:
+  X — no X logo/palette). The identity lives in `static/brand.css` `:root`:
   indigo-violet accent (`--brand: #6d5efc`), teal secondary (`--brand-2:
   #00c2a8`), gradient buttons (`.btn-brand`), rounded cards, Plus Jakarta Sans.
   Reuse those CSS vars; don't reintroduce the old X black/blue look or a new
   palette.
-- Keep the **shipped app single-file and dependency-free** (CDN only). The
-  root `package.json` is for the Jest harness only (see Testing) — don't add a
-  bundler or ship npm dependencies in `public/`.
-- Any `<script>` you add to the app must live **outside** Vue's `#app` root —
-  Vue strips inline scripts inside its template (this is why AdSense is
-  activated from the `mounted()` hook, not an inline `<script>`).
+- **Keep Vue (and other framework deps) bundled from our own origin** — the
+  build exists specifically to avoid a third-party CDN SPOF. Add npm deps as
+  needed, but don't move the core framework back to a runtime CDN `<script>`.
+- Any executable inline `<script>` must live **outside** Vue's `#app` root — Vue
+  strips inline scripts inside its template (this is why AdSense is activated
+  from the `mounted()` hook, and the module entry / boot fallback sit after
+  `</div>`). The `application/ld+json` block is data, not executable, so it's
+  fine in `<head>`.
 
 ## Monetization / third parties
 
 - **Google AdSense**: client `ca-pub-3160807008877535`, ad slot `5120476027`
-  (set in both the `<ins>` tag and the `ADSENSE_SLOT` const). The `mounted()`
-  hook skips `adsbygoogle.push({})` while the slot is the `1111…` placeholder to
-  keep dev/preview clean.
+  (set in both the `<ins>` tag in `index.html` and the `ADSENSE_SLOT` const in
+  `src/app.js`). The `mounted()` hook skips `adsbygoogle.push({})` while the slot
+  is the `1111…` placeholder to keep dev/preview clean.
 - fxtwitter API is unauthenticated and free; error codes are mapped to friendly
   messages in `fetchVideos()`.
-- A discreet, dismissible cookie notice (localStorage `cookieNoticeAck`) and the
-  privacy page exist for AdSense compliance.
+- A discreet, dismissible cookie notice (persisted via VueUse `useLocalStorage`
+  under key `cookieNoticeAck`) and the privacy page exist for AdSense compliance.
 - **Cloudflare Turnstile** gates video **downloads** (bot protection). The
   `cf-turnstile` widget (site key in `index.html`) mints a token that
   `downloadVideo()` sends to `/proxy` as a `cf-turnstile-response` header; the

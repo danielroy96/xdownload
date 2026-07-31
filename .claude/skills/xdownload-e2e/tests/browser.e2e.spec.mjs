@@ -31,6 +31,19 @@ test('loads the app shell (title + input + action button)', async ({ page }) => 
   await expect(primaryBtn(page)).toBeVisible()
 })
 
+test('the Vue app actually mounts (guards against the blank-page outage)', async ({ page }) => {
+  // Vue strips the `v-cloak` attribute from #app on a successful mount, so its
+  // disappearance is direct proof the bundle loaded, compiled the in-DOM
+  // template, and mounted — the failure mode ("site is down" = blank page) that
+  // the unit tests can't observe. Since Vue now ships from our OWN origin
+  // (bundled by Vite, not a third-party CDN), this is the regression guard for
+  // the whole reason this project moved to a build.
+  const app = page.locator('#app')
+  await expect.poll(async () => app.getAttribute('v-cloak'), { timeout: 15_000 }).toBeNull()
+  // And the boot-failure fallback must stay hidden when the app mounts fine.
+  await expect(page.locator('#boot-fallback')).toBeHidden()
+})
+
 test('embeds the Cloudflare Turnstile widget (download bot-gate)', async ({ page }) => {
   // The widget must be present with our site key + the analytics action tag.
   const widget = page.locator('.cf-turnstile')

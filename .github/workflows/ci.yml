@@ -1,9 +1,9 @@
 name: CI
 
-# Runs the Jest suite on every push and pull request. Branch protection on
-# `main` uses the "test" job below as a required status check, so a PR can't be
-# merged until these tests pass. See CLAUDE.md for what's under test (the
-# Worker's /proxy contract + the single-file Vue app's logic).
+# Builds the app and runs the Vitest suite on every push and pull request.
+# Branch protection on `main` uses the "test" job below as a required status
+# check, so a PR can't be merged until this is green. See CLAUDE.md for what's
+# under test (the Worker's /proxy + /health contract + the Vue app's logic).
 on:
   push:
     branches: [main]
@@ -16,14 +16,18 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# checks:write lets dorny/test-reporter publish the per-test report as a Check
-# run on the commit/PR; the defaults stay read-only.
+# checks:write lets the report step publish the per-test report as a Check run
+# on the commit/PR; the defaults stay read-only.
 permissions:
   contents: read
   checks: write
 
 jobs:
   test:
+    # NOTE: the job name "Run Jest Tests" is load-bearing — branch protection on
+    # `main` matches this exact string as a required check. It now runs Vitest;
+    # do NOT rename it without updating the branch-protection setting in the same
+    # change, or PRs will hang forever waiting on a check that never reports.
     name: Run Jest Tests
     runs-on: ubuntu-latest
     steps:
@@ -39,9 +43,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Jest writes reports/junit.xml (see jest.config.js). `npm test` exits
-      # non-zero on failure so the job still goes red — but the two steps below
-      # run with `if: ${{ !cancelled() }}` so the report is published either way.
+      # Fail CI on a broken build (bad import, Vite config regression, etc.)
+      # before we even get to the tests.
+      - name: Build
+        run: npm run build
+
+      # `npm test` runs `vitest run`, which writes reports/junit.xml (see
+      # vitest.config.js) and exits non-zero on failure so the job goes red — but
+      # the two steps below run with `if: ${{ !cancelled() }}` so the report is
+      # published either way.
       - name: Run Tests
         run: npm test
 
@@ -54,13 +64,12 @@ jobs:
         env:
           # SHA the check attaches to: the PR head on pull_request, else the push SHA.
           REPORT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/junit-to-summary.js
+        run: node scripts/junit-to-summary.cjs
 
-      # Publish that same report as the "Jest Test Report" check on the
-      # commit/PR, so the check page shows the full scenario table (not just a
-      # per-file summary). Posts the API directly with gh rather than a
-      # Node-based action, which avoids reintroducing the Node-20 warning.
-      - name: Publish Jest Test Report (Checks)
+      # Publish that same report as the "Vitest Test Report" check on the
+      # commit/PR, so the check page shows the full scenario table. Posts the API
+      # directly with gh rather than a Node-based action.
+      - name: Publish Vitest Test Report (Checks)
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}

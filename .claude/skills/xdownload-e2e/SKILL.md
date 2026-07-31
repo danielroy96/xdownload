@@ -6,11 +6,12 @@ description: >-
   user wants to test, verify, smoke-test, sanity-check, or confirm the health
   of xdownload — after a `wrangler deploy`, when downloads/playback are reported
   broken, when PROXY_BASE or the `/proxy` contract may have regressed, when the
-  fxtwitter integration is suspect, or before/after any change to
-  public/index.html or worker/worker.js. Covers the Worker proxy contract
-  (CORS, Range, host allow-list, forced download), static hosting, the
-  fxtwitter API integration, and the full browser user journey (paste → fetch →
-  render → play → download).
+  fxtwitter integration is suspect, or before/after any change to the app
+  (src/*, index.html) or worker/worker.js. Covers the Worker /health + /proxy
+  contract (CORS, Range, host allow-list, forced download), static hosting of
+  the Vite build, that the Vue app actually mounts, the fxtwitter API
+  integration, and the full browser user journey (paste → fetch → render → play
+  → download).
 ---
 
 # xDownload end-to-end tests
@@ -110,8 +111,10 @@ update `SAMPLE` in `tests/worker.e2e.mjs` and `SAMPLE_URL` in
   before). Verify with `curl https://xdownload.info/proxy` → expect
   `400 {"error":"missing ?url parameter"}`.
 - **Browser: player `src` is a raw twimg URL, not `/proxy?...`** → `PROXY_BASE`
-  in `public/index.html` is empty/misconfigured; playback and downloads will be
-  unreliable.
+  in `src/app.js` is misconfigured; playback and downloads will be unreliable.
+- **Browser: the "Vue app actually mounts" test fails / the page is blank** →
+  the built bundle failed to load or mount (`#app` keeps its `v-cloak`); the
+  boot fallback should show. Check the build output and console.
 - **fxtwitter tests fail** → the free public API changed shape or is down;
   `fetchVideos()` in the app will break the same way.
 - **Worker `&dl=` gate tests fail (a tokenless/bogus-token download is NOT 403)**
@@ -123,6 +126,7 @@ update `SAMPLE` in `tests/worker.e2e.mjs` and `SAMPLE_URL` in
   (Error `600010` is different — it's Turnstile correctly refusing the automated
   browser; that's expected and the test accounts for it.)
 
-Reminder (from CLAUDE.md): editing `public/index.html` or `worker/worker.js`
-changes **nothing** on the live site until `npx wrangler deploy`. These tests
-hit the deployed Worker, so run them **after** deploying to verify a change.
+Reminder (from CLAUDE.md): editing the app (`src/*`, `index.html`) or
+`worker/worker.js` changes **nothing** on the live site until the app is rebuilt
+and redeployed (`npm run deploy`, or `npx wrangler deploy` which builds first).
+These tests hit the deployed Worker, so run them **after** deploying.

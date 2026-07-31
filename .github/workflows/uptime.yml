@@ -1,0 +1,109 @@
+name: Uptime monitor
+
+# Scheduled production health check. Turns "we find out the site is down from
+# user reports" into "we're alerted automatically within ~15 minutes". Probes
+# the Worker's stable contracts (no dependency on X/twimg being up) and, on any
+# failure, opens or updates a single deduplicated GitHub issue.
+on:
+  schedule:
+    - cron: '*/15 * * * *' # every 15 minutes
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# Needed to open/update the alert issue.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+env:
+  BASE: https://xdownload.info
+  ISSUE_TITLE: '🚨 Production health check failing'
+
+jobs:
+  probe:
+    name: Probe production
+    runs-on: ubuntu-latest
+    steps:
+      # Each check asserts a STABLE contract that must hold whenever the Worker
+      # is healthy — independent of whether X/twimg is up. Collect all failures
+      # so one alert lists everything that's wrong.
+      - name: Run health probes
+        id: probe
+        run: |
+          set -uo pipefail
+          fails=""
+
+          check() {
+            local name="$1" url="$2" expected="$3" grep_for="${4:-}"
+            local code body
+            body="$(curl -sS -m 20 -w $'\n%{http_code}' "$url" || true)"
+            code="$(printf '%s' "$body" | tail -n1)"
+            body="$(printf '%s' "$body" | sed '$d')"
+            if [ "$code" != "$expected" ]; then
+              fails="${fails}\n- **${name}**: expected HTTP ${expected}, got ${code} (\`${url}\`)"
+              return
+            fi
+            if [ -n "$grep_for" ] && ! printf '%s' "$body" | grep -q "$grep_for"; then
+              fails="${fails}\n- **${name}**: HTTP ${expected} but body missing \`${grep_for}\` (\`${url}\`)"
+            fi
+          }
+
+          # Worker liveness (independent of upstream).
+          check "health endpoint"        "$BASE/health"                              200 '"status":"ok"'
+          # App shell actually served (the Vue mount point must be present).
+          check "app shell"              "$BASE/"                                    200 'id="app"'
+          # Proxy contract guards — these must hold or downloads/playback break.
+          check "proxy missing-url 400"  "$BASE/proxy"                               400 'missing ?url'
+          check "proxy bad-host 403"     "$BASE/proxy?url=https://example.com/x.mp4" 403 'host not allowed'
+          # AdSense authorized-sellers file (a silent 404 here loses ad revenue).
+          check "ads.txt"                "$BASE/ads.txt"                             200
+
+          if [ -n "$fails" ]; then
+            echo "status=down" >> "$GITHUB_OUTPUT"
+            {
+              echo 'report<<EOF'
+              echo -e "Automated health check failed at $(date -u +'%Y-%m-%dT%H:%M:%SZ') against \`$BASE\`:"
+              echo -e "$fails"
+              echo EOF
+            } >> "$GITHUB_OUTPUT"
+            echo -e "PROBE FAILURES:$fails"
+            exit 1
+          fi
+          echo "status=up" >> "$GITHUB_OUTPUT"
+          echo "All production health probes passed."
+
+      # On failure: open a new alert issue, or comment on the existing open one
+      # (dedup by title) so we don't spam a fresh issue every 15 minutes.
+      - name: Open or update alert issue
+        if: failure() && steps.probe.outputs.status == 'down'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.probe.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number' || true)"
+          body="$(printf '%s\n\nRun: %s' "$REPORT" "$RUN_URL")"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$body" --label "outage" || \
+            gh issue create --title "$ISSUE_TITLE" --body "$body"
+          fi
+
+      # When a previously-failing check recovers, close the open alert issue so
+      # it reflects current reality.
+      - name: Resolve alert issue on recovery
+        if: success() && steps.probe.outputs.status == 'up'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number' || true)"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "✅ Health checks are passing again — closing."
+            gh issue close "$existing"
+          fi
