@@ -27,11 +27,11 @@ async function run() {
   for (const c of checks) {
     const url = BASE + c.path
     try {
-      const res = await fetch(url, { redirect: 'manual' })
+      // Follow redirects: Cloudflare canonicalises page URLs (e.g. /privacy.html
+      // → /privacy, 307), so the final response is what a real user gets. The
+      // /proxy and /health contracts don't redirect, so this is safe for them.
+      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20_000) })
       const body = await res.text()
-      // Treat a 3xx to the same resource (clean-URL redirect) as acceptable for
-      // pages that Cloudflare may canonicalise; only enforce exact codes on the
-      // API/asset contracts.
       const ok = res.status === c.status
       if (!ok) {
         failures.push(`${c.name}: expected HTTP ${c.status}, got ${res.status}  (${url})`)
