@@ -6,9 +6,15 @@
   "observability": {
     "enabled": false
   },
+  // Serve the Vite build output (public/ is gone; the app is now built). The
+  // `build.command` below runs `vite build` before every `wrangler deploy` /
+  // `wrangler dev`, so dist/ is never stale or missing.
   "assets": {
-    "directory": "public",
+    "directory": "dist",
     "binding": "ASSETS"
+  },
+  "build": {
+    "command": "npm run build"
   },
   "compatibility_flags": [
     "nodejs_compat"

@@ -3,8 +3,8 @@
  * ------------------------------------------------------
  * One Worker does two jobs:
  *
- *   1. Serves the static app (public/index.html) via Static Assets. Any request
- *      that matches a file in /public is returned directly — the code below
+ *   1. Serves the built app (the Vite output in dist/) via Static Assets. Any
+ *      request that matches a built file is returned directly — the code below
  *      isn't even invoked for those.
  *
  *   2. Handles `/proxy?url=<twimg url>` — Twitter's CDN sends no CORS headers
@@ -168,11 +168,20 @@ async function handleProxy(request, reqUrl, env) {
   })
 }
 
+// Cheap, dependency-free liveness probe for uptime monitors. Unlike `/`, it
+// doesn't touch static assets, and unlike `/proxy` it never depends on twimg or
+// fxtwitter — so a green /health means "the Worker itself is running", cleanly
+// separating an app/Worker outage from an upstream (X/twimg) problem.
+function handleHealth() {
+  return json({ status: 'ok', service: 'xdownload' }, 200)
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
+    if (url.pathname === '/health') return handleHealth()
     if (url.pathname === '/proxy') return handleProxy(request, url, env)
-    // Not the proxy route — serve the static app (index.html, etc.).
+    // Not a Worker route — serve the static app (index.html, etc.).
     return env.ASSETS.fetch(request)
   },
 }

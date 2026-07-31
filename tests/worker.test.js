@@ -7,15 +7,15 @@
  * are the only external dependencies, and both are mocked so tests are
  * hermetic — no network, no real assets.
  *
- * @jest-environment node
+ * @vitest-environment node
  */
-const worker = require('../worker/worker.js').default
+import worker from '../worker/worker.js'
 
 // A minimal ASSETS binding: records the request it was handed and returns a
 // recognisable static response. TURNSTILE_SECRET is present so the download
 // gate (which reads env.TURNSTILE_SECRET) behaves as it does in production.
 function makeEnv() {
-  const assetsFetch = jest.fn(async (req) => new Response('<html>app</html>', {
+  const assetsFetch = vi.fn(async (req) => new Response('<html>app</html>', {
     status: 200,
     headers: { 'Content-Type': 'text/html' },
   }))
@@ -36,9 +36,9 @@ const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 //               'throw'   → the fetch rejects (network failure);
 //               'non-2xx' → returns HTTP 500 (siteverify unreachable/broken).
 //   upstream:   the Response used for the twimg fetch (defaults to 200 video).
-// Returns the jest spy so callers can assert on the calls.
+// Returns the vi spy so callers can assert on the calls.
 function mockFetch({ siteverify = { success: true }, upstream } = {}) {
-  return jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+  return vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
     if (String(url).includes('/turnstile/v0/siteverify')) {
       if (siteverify === 'throw') throw new Error('siteverify down')
       if (siteverify === 'non-2xx') return new Response('err', { status: 500 })
@@ -77,7 +77,7 @@ describe('Serving the app', () => {
   })
 
   test('never fetches upstream video for a page load', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('x'))
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('x'))
     const { env } = makeEnv()
     await worker.fetch(req('/index.html'), env)
     expect(spy).not.toHaveBeenCalled()
@@ -85,9 +85,24 @@ describe('Serving the app', () => {
   })
 })
 
+describe('Health check', () => {
+  test('GET /health returns 200 {status:"ok"} with CORS, without touching assets or upstream', async () => {
+    const spy = vi.spyOn(global, 'fetch')
+    const { env, assetsFetch } = makeEnv()
+    const res = await worker.fetch(req('/health'), env)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(await res.json()).toEqual({ status: 'ok', service: 'xdownload' })
+    // A liveness probe must be self-contained: no static-asset read, no upstream.
+    expect(assetsFetch).not.toHaveBeenCalled()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+})
+
 describe('Proxy — only serves legitimate twimg video', () => {
   test('answers a CORS preflight without calling upstream', async () => {
-    const spy = jest.spyOn(global, 'fetch')
+    const spy = vi.spyOn(global, 'fetch')
     const { env } = makeEnv()
     const res = await worker.fetch(req('/proxy', { method: 'OPTIONS' }), env)
     expect(res.status).toBe(200)
@@ -146,7 +161,7 @@ describe('Proxy — only serves legitimate twimg video', () => {
     'pbs.twimg.com',
     'amp.twimg.com',
   ])('allows the twimg host %s', async (host) => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response('bytes', { status: 200, headers: { 'Content-Type': 'video/mp4' } })
     )
     const { env } = makeEnv()
@@ -171,7 +186,7 @@ describe('Proxy — only serves legitimate twimg video', () => {
 
 describe('Proxy — streaming video to the browser', () => {
   test('fetches with a twitter Referer and re-serves the bytes with CORS', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response('VIDEOBYTES', {
         status: 200,
         headers: { 'Content-Type': 'video/mp4', 'Content-Length': '10' },
@@ -194,7 +209,7 @@ describe('Proxy — streaming video to the browser', () => {
   })
 
   test('forwards Range requests so the player can seek', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response('partial', { status: 206 })
     )
     const { env } = makeEnv()
@@ -208,7 +223,7 @@ describe('Proxy — streaming video to the browser', () => {
   })
 
   test('preserves the upstream status code', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response('partial', { status: 206, statusText: 'Partial Content' })
     )
     const { env } = makeEnv()
@@ -231,7 +246,7 @@ describe('Proxy — streaming video to the browser', () => {
   })
 
   test('forwards HEAD requests', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     const { env } = makeEnv()
     const res = await worker.fetch(
       req(`/proxy?url=${encodeURIComponent(TWIMG)}`, { method: 'HEAD' }),
@@ -326,7 +341,7 @@ describe('Proxy — Turnstile download gate', () => {
 
 describe('Proxy — edge caching', () => {
   test('caches a full video response at the edge', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('bytes', { status: 200 }))
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('bytes', { status: 200 }))
     const { env } = makeEnv()
     const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=86400, immutable')
@@ -336,7 +351,7 @@ describe('Proxy — edge caching', () => {
   })
 
   test('never caches a partial (Range) response', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('partial', { status: 206 }))
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('partial', { status: 206 }))
     const { env } = makeEnv()
     const res = await worker.fetch(
       req(`/proxy?url=${encodeURIComponent(TWIMG)}`, { headers: { Range: 'bytes=0-99' } }),
@@ -348,7 +363,7 @@ describe('Proxy — edge caching', () => {
   })
 
   test('never caches an upstream error', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('nope', { status: 403 }))
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('nope', { status: 403 }))
     const { env } = makeEnv()
     const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
     expect(res.headers.get('Cache-Control')).toBeNull()
@@ -358,7 +373,7 @@ describe('Proxy — edge caching', () => {
 
 describe('Proxy — upstream failure', () => {
   test('returns 502 when the upstream fetch fails', async () => {
-    const spy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNRESET'))
+    const spy = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNRESET'))
     const { env } = makeEnv()
     const res = await worker.fetch(req(`/proxy?url=${encodeURIComponent(TWIMG)}`), env)
     expect(res.status).toBe(502)

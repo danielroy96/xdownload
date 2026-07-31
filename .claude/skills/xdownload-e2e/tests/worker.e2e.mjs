@@ -32,7 +32,7 @@ function fetchT(url, opts = {}) {
   return fetch(url, { signal: AbortSignal.timeout(TIMEOUT), ...opts })
 }
 
-// mirrors bestMp4Url() in public/index.html: highest-bitrate progressive MP4,
+// mirrors bestMp4Url() in src/app.js: highest-bitrate progressive MP4,
 // never the .m3u8 HLS playlist.
 function bestMp4Url(video) {
   const variants = (video.variants || video.formats || [])
@@ -77,16 +77,36 @@ test('fxtwitter: deleted/unknown post yields a 404 code the app maps to a messag
   assert.equal(data.code, 404)
 })
 
-// ── Static app hosting ─────────────────────────────────────────────────────
-// Non-/proxy requests fall through to the ASSETS binding (env.ASSETS.fetch).
+// ── Worker liveness ──────────────────────────────────────────────────────────
+// A dependency-free health probe. Green here means the Worker itself is running,
+// independent of X/twimg — cleanly separating an app/Worker outage from an
+// upstream problem. The scheduled uptime monitor (.github/workflows/uptime.yml)
+// polls this same endpoint.
 
-test('static: GET / serves the Vue single-file app', async () => {
+test('health: GET /health returns 200 {status:"ok"} with CORS', async () => {
+  const res = await fetchT(`${BASE}/health`)
+  assert.equal(res.status, 200)
+  assert.equal(res.headers.get('access-control-allow-origin'), '*')
+  const body = await res.json()
+  assert.equal(body.status, 'ok')
+})
+
+// ── Static app hosting ─────────────────────────────────────────────────────
+// Non-/proxy, non-/health requests fall through to the ASSETS binding
+// (env.ASSETS.fetch), now serving the Vite build output (dist/).
+
+test('static: GET / serves the built Vue app', async () => {
   const res = await fetchT(`${BASE}/`)
   assert.equal(res.status, 200)
   assert.match(res.headers.get('content-type') || '', /text\/html/)
   const html = await res.text()
   assert.match(html, /id="app"/, 'Vue mount point present')
-  assert.match(html, /api\.fxtwitter\.com|fxtwitter/, 'app talks to fxtwitter')
+  // The build injects a hashed module bundle — its presence proves the built
+  // output (not stale raw source) is being served, and that Vue ships from our
+  // OWN origin rather than a third-party CDN (the old unpkg single-point-of-
+  // failure that this migration removed).
+  assert.match(html, /<script[^>]+type="module"[^>]+src="\/assets\//, 'built module bundle linked from our origin')
+  assert.doesNotMatch(html, /unpkg\.com/, 'no unpkg CDN dependency')
 })
 
 test('static: GET /privacy.html serves the privacy page (AdSense compliance)', async () => {
