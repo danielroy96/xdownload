@@ -20,7 +20,7 @@
   "devDependencies": {
     "fast-xml-parser": "^5.10.1",
     "jsdom": "^25.0.1",
-    "vite": "^6.0.7",
+    "vite": "^6.4.5",
     "vitest": "^3.0.0",
     "wrangler": "^3.99.0"
   }
